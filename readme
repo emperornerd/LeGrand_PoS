@@ -1,0 +1,72 @@
+How to Use Your Inventory Management App
+This app helps you track sales, manage inventory, and organize your product catalog.
+
+Selling Items
+Select a Category: On the main screen, tap a category button (e.g., "Dresses").
+
+Select a Brand: Next, tap a brand button within that category (e.g., "Evening").
+
+Select an Item: Finally, tap the item you're selling.
+
+Confirm Sale: A pop-up will ask you to confirm the sale at the item's default price.
+
+Adjust Price/Discount: If needed, choose "Adjust Price / Discount" to apply a percentage discount or manually override the price.
+
+Custom Items ("Other"): If an item isn't listed, select the "Other" category. Enter a custom item name and price, then tap "Log Sale."
+
+Fixed Prices ("Clips, etc."): For quick fixed-price sales, select the "Clips, etc." category and choose the desired price button. You can tap "Adjust Price / Discount for Clips" to apply discounts or manual overrides.
+
+Manage Current Sale:
+
+Undo Last Item: Tap "Undo Last Item" to remove the most recently added item from the current sale and revert its inventory change.
+
+Complete Sale: Tap "Complete Sale" to finalize the transaction and see the total.
+
+Cancel Sale: Tap "Cancel Sale" to clear the current sale and revert all associated inventory changes.
+
+Managing Inventory
+From the main screen, tap "Manage Inventory."
+
+Search: Use the search bar to find specific items by name or code.
+
+Adjust Quantity: For any item, use the "+" or "-" buttons to increase or decrease its quantity.
+
+Manual Quantity/Price: Tap the quantity or price number to manually enter a new value.
+
+Viewing Activity Log
+From the main screen, tap "View Activity Log."
+
+This screen displays a chronological list of all sales and inventory adjustments.
+
+The most recent sale total will be highlighted at the top.
+
+Managing Menus (Categories, Brands, Items)
+Go to Dev > Go to Menu Management.
+
+Enable Edit Mode: Tap the lock icon in the top-left corner of the header to enable/disable editing. When unlocked, you can make changes.
+
+Add/Delete Categories: Use the input field and "Add Category" button, or tap the delete icon next to existing categories (excluding "Other" and "Clips, etc.").
+
+Add/Delete Brands: First, select a category from the horizontal picker. Then, use the input field and "Add Brand" button, or tap the delete icon next to existing brands (excluding "Fixed Prices" and "Custom").
+
+Add/Delete Items: First, select a category and then a brand from the horizontal pickers. Then, use the input fields and "Add Item" button, or tap the delete icon next to existing items (excluding fixed price items).
+
+File Management
+From the Activity Log screen, tap "Manage Log Files."
+
+Download Logs/Inventory: You can download the current day's log (CSV), full inventory (JSON), or export inventory as CSV.
+
+View Previous Logs: Select a file from the list to view its content within the app.
+
+Development Tools
+From the main screen, tap "Dev" in the top-right corner.
+
+Color Scheme: Switch between "Light Mode" and "Dark Mode."
+
+Cashier Number: Set a cashier number for your session.
+
+Populate Example Items: Add a set of predefined categories, brands, and items to your menu and inventory for testing.
+
+Export/Import Config: Export your current menu and inventory data to a JSON file, or import a previously exported configuration.
+
+Reset All App Data: Use with caution! This will permanently delete all inventory and log data.
