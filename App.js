@@ -8,168 +8,117 @@ import {
   ScrollView,
   SafeAreaView,
   Alert,
-  Platform, // Import Platform to handle OS-specific padding
-  Modal // Modal is still needed for other purposes, but not for sale editing
+  Platform,
+  Modal
 } from 'react-native';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-import { MaterialIcons } from '@expo/vector-icons'; // For the edit icon
+import *as FileSystem from 'expo-file-system';
+import *as Sharing from 'expo-sharing';
+import { MaterialIcons } from '@expo/vector-icons';
 
 // --- File System Constants ---
 const LOG_DIRECTORY = FileSystem.documentDirectory + 'inventory_logs/';
-const INVENTORY_FILE = FileSystem.documentDirectory + 'inventory.json'; // File for inventory data
-const MENUS_FILE = FileSystem.documentDirectory + 'menus.json'; // File for menu structure
-const COLOR_SCHEME_FILE = FileSystem.documentDirectory + 'color_scheme.json'; // File for color scheme persistence
-const CONFIG_BACKUP_FILE = FileSystem.documentDirectory + 'inventory_config_backup.json'; // File for config import/export
+const INVENTORY_FILE = FileSystem.documentDirectory + 'inventory.json';
+const MENUS_FILE = FileSystem.documentDirectory + 'menus.json';
+const COLOR_SCHEME_FILE = FileSystem.documentDirectory + 'color_scheme.json';
+const CONFIG_BACKUP_FILE = FileSystem.documentDirectory + 'inventory_config_backup.json';
+const LAYAWAY_FILE = FileSystem.documentDirectory + 'layaway.json';
 
 // --- Default Data for Initialization ---
 const DEFAULT_ITEM_QUANTITY = 10;
-const DEFAULT_ITEM_PRICE = 25.00; // Default price for items
+const DEFAULT_ITEM_PRICE = 25.00;
 const DEFAULT_MENUS = {
   categories: [
-    { name: 'Other', brands: [] }, // Start with 'Other' category
+    { name: 'Other', brands: [] },
     {
-      name: 'Clips, etc.', // Ensure 'Clips, etc.' category is always present and non-deletable
+      name: 'Clips, etc.',
       brands: [
         {
-          name: 'Fixed Prices', // Internal brand for fixed prices, non-deletable
+          name: 'Fixed Prices',
           items: [
-            // These items are regenerated on loadMenus to ensure consistency
-            { name: '$2.00', price: 2.00 },
-            { name: '$5.00', price: 5.00 },
-            { name: '$10.00', price: 10.00 },
-            { name: '$12.00', price: 12.00 },
-            { name: '$14.00', price: 14.00 },
-            { name: '$18.00', price: 18.00 },
-            { name: '$20.00', price: 20.00 },
-            { name: '$22.00', price: 22.00 },
-            { name: '$25.00', price: 25.00 },
-            { name: '$30.00', price: 30.00 },
-            { name: '$40.00', price: 40.00 },
-            { name: '$50.00', price: 50.00 },
-            { name: '$60.00', price: 60.00 },
-            { name: '$70.00', price: 70.00 },
-            { name: '$80.00', price: 80.00 },
-            { name: '$90.00', price: 90.00 },
-            { name: '$100.00', price: 100.00 },
-            { name: '$110.00', price: 110.00 },
-            { name: '$120.00', price: 120.00 },
-            { name: '$130.00', price: 130.00 },
-            { name: '$140.00', price: 140.00 },
-            { name: '$150.00', price: 150.00 },
-            { name: '$160.00', price: 160.00 },
-            { name: '$170.00', price: 170.00 },
-            { name: '$180.00', price: 180.00 },
-            { name: '$190.00', price: 190.00 },
-            { name: '$200.00', price: 200.00 },
-            { name: '$250.00', price: 250.00 },
+            { name: '$2.00', price: 2.00 }, { name: '$5.00', price: 5.00 },
+            { name: '$10.00', price: 10.00 }, { name: '$12.00', price: 12.00 },
+            { name: '$14.00', price: 14.00 }, { name: '$18.00', price: 18.00 },
+            { name: '$20.00', price: 20.00 }, { name: '$22.00', price: 22.00 },
+            { name: '$25.00', price: 25.00 }, { name: '$30.00', price: 30.00 },
+            { name: '$40.00', price: 40.00 }, { name: '$50.00', price: 50.00 },
+            { name: '$60.00', price: 60.00 }, { name: '$70.00', price: 70.00 },
+            { name: '$80.00', price: 80.00 }, { name: '$90.00', price: 90.00 },
+            { name: '$100.00', price: 100.00 }, { name: '$110.00', price: 110.00 },
+            { name: '$120.00', price: 120.00 }, { name: '$130.00', price: 130.00 },
+            { name: '$140.00', price: 140.00 }, { name: '$150.00', price: 150.00 },
+            { name: '$160.00', price: 160.00 }, { name: '$170.00', price: 170.00 },
+            { name: '$180.00', price: 180.00 }, { name: '$190.00', price: 190.00 },
+            { name: '$200.00', price: 200.00 }, { name: '$250.00', price: 250.00 },
           ]
         }
       ]
     }
   ]
 };
-const DEFAULT_COLOR_SCHEME = 'light'; // Default color scheme
+const DEFAULT_COLOR_SCHEME = 'light';
 
 // --- Color Palettes ---
 const COLOR_PALETTES = {
   light: {
-    background: '#f0f2f5',
-    text: '#333',
-    headerBg: '#4a90e2',
-    headerText: '#ffffff',
-    buttonBgPrimary: '#50c878', // Green for action buttons
-    buttonBgSecondary: '#f5a623', // Orange for log/dev buttons
-    buttonBgTertiary: '#8e44ad', // Purple for inventory button
-    buttonBgDanger: '#e74c3c', // Red for delete/reset
-    buttonBgLight: '#bdc3c7', // Gray for quantity controls
-    inputBg: '#ffffff',
-    inputBorder: '#ddd',
-    logEntryBg: '#ffffff',
-    logEntryBorder: '#eee',
-    logTimestamp: '#2c3e50',
-    logAction: '#555',
-    logDetails: '#7f8c8d',
-    cardBg: '#ffffff',
-    cardBorder: '#eee',
-    shadowColor: '#000',
-    pickerBg: '#e0e0e0',
-    pickerText: '#333',
-    pickerSelectedBg: '#4a90e2',
-    pickerSelectedText: '#ffffff',
-    warningBg: '#fdf6e3',
-    warningBorder: '#f7d794',
+    background: '#f0f2f5', text: '#333', headerBg: '#4a90e2', headerText: '#ffffff',
+    buttonBgPrimary: '#50c878', buttonBgSecondary: '#f5a623', buttonBgTertiary: '#8e44ad',
+    buttonBgDanger: '#e74c3c', buttonBgLight: '#bdc3c7', inputBg: '#ffffff',
+    inputBorder: '#ddd', logEntryBg: '#ffffff', logEntryBorder: '#eee',
+    logTimestamp: '#2c3e50', logAction: '#555', logDetails: '#7f8c8d',
+    cardBg: '#ffffff', cardBorder: '#eee', shadowColor: '#000',
+    pickerBg: '#e0e0e0', pickerText: '#333', pickerSelectedBg: '#4a90e2',
+    pickerSelectedText: '#ffffff', warningBg: '#fdf6e3', warningBorder: '#f7d794',
     warningText: '#d35400',
   },
   dark: {
-    background: '#2c3e50', // Dark background
-    text: '#ecf0f1', // Light text
-    headerBg: '#34495e', // Darker blue
-    headerText: '#ffffff',
-    buttonBgPrimary: '#27ae60', // Darker green
-    buttonBgSecondary: '#e67e22', // Darker orange
-    buttonBgTertiary: '#9b59b6', // Darker purple
-    buttonBgDanger: '#c0392b', // Darker red
-    buttonBgLight: '#7f8c8d', // Darker gray for quantity controls
-    inputBg: '#34495e',
-    inputBorder: '#555',
-    logEntryBg: '#34495e',
-    logEntryBorder: '#555',
-    logTimestamp: '#ecf0f1',
-    logAction: '#bdc3c7',
-    logDetails: '#95a5a6',
-    cardBg: '#34495e',
-    cardBorder: '#555',
-    shadowColor: '#000', // Shadow can remain black or be a very dark gray
-    pickerBg: '#555',
-    pickerText: '#ecf0f1',
-    pickerSelectedBg: '#4a90e2', // Keep blue for selection
-    pickerSelectedText: '#ffffff',
-    warningBg: '#442b00', // Darker warning
-    warningBorder: '#7a5200',
+    background: '#2c3e50', text: '#ecf0f1', headerBg: '#34495e', headerText: '#ffffff',
+    buttonBgPrimary: '#27ae60', buttonBgSecondary: '#e67e22', buttonBgTertiary: '#9b59b6',
+    buttonBgDanger: '#c0392b', buttonBgLight: '#7f8c8d', inputBg: '#34495e',
+    inputBorder: '#555', logEntryBg: '#34495e', logEntryBorder: '#555',
+    logTimestamp: '#ecf0f1', logAction: '#bdc3c7', logDetails: '#95a5a6',
+    cardBg: '#34495e', cardBorder: '#555', shadowColor: '#000',
+    pickerBg: '#555', pickerText: '#ecf0f1', pickerSelectedBg: '#4a90e2',
+    pickerSelectedText: '#ffffff', warningBg: '#442b00', warningBorder: '#7a5200',
     warningText: '#ffcc80',
+  },
+  pastel: {
+    background: '#fef7f9', text: '#4a2a4e', headerBg: '#e0b2d9', headerText: '#ffffff',
+    buttonBgPrimary: '#a7d9b5', buttonBgSecondary: '#f7b7d3', buttonBgTertiary: '#c2a7d9',
+    buttonBgDanger: '#f2a0a0', buttonBgLight: '#d9d9d9', inputBg: '#ffffff',
+    inputBorder: '#e0e0e0', logEntryBg: '#ffffff', logEntryBorder: '#f0e0f5',
+    logTimestamp: '#6a5a76', logAction: '#5d4c6b', logDetails: '#867b98',
+    cardBg: '#ffffff', cardBorder: '#e0e0e0', shadowColor: '#b19cd9',
+    pickerBg: '#e0e0e0', pickerText: '#4a2a4e', pickerSelectedBg: '#e0b2d9',
+    pickerSelectedText: '#ffffff', warningBg: '#ffe0e6', warningBorder: '#fcc6d4',
+    warningText: '#c45a7d',
   }
 };
 
-// Helper function to get colors based on current scheme
 const getColors = (scheme) => COLOR_PALETTES[scheme];
 
-
 // --- Helper Functions ---
-
-// Creates a unique internal key for inventory items (e.g., "Purses_Brand A_Item A1")
 const getItemKey = (category, brand, item) => `${category}_${brand}_${item}`;
-
-// Parses item key back for display/CSV
 const parseItemKey = (itemKey) => {
   const parts = itemKey.split('_');
   if (parts.length >= 3) {
     const category = parts[0];
     const brand = parts[1];
-    const item = parts.slice(2).join('_'); // Rejoin in case item name had underscores
+    const item = parts.slice(2).join('_');
     return { category, brand, item };
   }
-  return { category: 'Unknown', brand: 'Unknown', item: itemKey }; // Fallback
+  return { category: 'Unknown', brand: 'Unknown', item: itemKey };
 };
-
-// Generates a human-readable, alphanumeric unique code for items
 const generateUniqueItemCode = (category, brand, item) => {
-  // Clean and truncate parts for the code
   const cleanAndTruncate = (str) => str.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase();
-
   const catPart = cleanAndTruncate(category);
   const brandPart = cleanAndTruncate(brand);
   const itemPart = cleanAndTruncate(item);
-  const randomNum = Math.floor(Math.random() * 90000 + 10000).toString(); // 5-digit random number for better uniqueness
+  const randomNum = Math.floor(Math.random() * 90000 + 10000).toString();
   return `${catPart}-${brandPart}-${itemPart}-${randomNum}`;
 };
-
-// Gets category-level code for display
 const getCategoryCode = (category) => {
   return category.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase();
 };
-
-// Gets brand-level code for display (e.g., "PUR-BRA" for Purses-BrandA)
 const getBrandCode = (category, brand) => {
   const catPrefix = category.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase();
   const brandPrefix = brand.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase();
@@ -223,18 +172,17 @@ const EXAMPLE_MENUS = {
 // --- Main Application Component ---
 const App = () => {
   const [currentView, setCurrentView] = useState('main');
-  const [log, setLog] = useState([]); // Stores structured log entries for the current session/display
-  const [inventory, setInventory] = useState({}); // Stores inventory quantities and metadata
+  const [log, setLog] = useState([]);
+  const [inventory, setInventory] = useState({});
+  const [layawayItems, setLayawayItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [cashierNumber, setCashierNumber] = useState('0'); // State for cashier number
-  const [menuData, setMenuData] = useState(DEFAULT_MENUS); // Stores hierarchical menu data
-  const [isEditModeEnabled, setIsEditModeEnabled] = useState(false); // State for edit mode
-  const [colorScheme, setColorScheme] = useState(DEFAULT_COLOR_SCHEME); // State for color scheme
-  const [lastCompletedSaleTotal, setLastCompletedSaleTotal] = useState(0); // New state for last completed sale total
+  const [cashierNumber, setCashierNumber] = useState('0');
+  const [menuData, setMenuData] = useState(DEFAULT_MENUS);
+  const [isEditModeEnabled, setIsEditModeEnabled] = useState(false);
+  const [colorScheme, setColorScheme] = useState(DEFAULT_COLOR_SCHEME);
+  const [lastCompletedSaleTotal, setLastCompletedSaleTotal] = useState(0);
 
   // --- File System Functions ---
-
-  // Ensures the log directory exists
   const ensureLogDirectoryExists = async () => {
     try {
       const dirInfo = await FileSystem.getInfoAsync(LOG_DIRECTORY);
@@ -247,32 +195,28 @@ const App = () => {
     }
   };
 
-  // Gets the file path for today's log (always .csv)
   const getTodayLogFilePath = () => {
     const date = new Date();
     const fileName = `inventory_log_${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}.csv`;
     return LOG_DIRECTORY + fileName;
   };
 
-  // Loads log entries from today's CSV file, ensuring file exists and parsing structured data
   const loadLogFromFile = async () => {
     await ensureLogDirectoryExists();
     const filePath = getTodayLogFilePath();
     try {
       const fileInfo = await FileSystem.getInfoAsync(filePath);
       if (!fileInfo.exists) {
-        // Create an empty log file with header if it does not exist for today
-        await FileSystem.writeAsStringAsync(filePath, 'Timestamp,Action,Item Code,Category,Brand,Item,Quantity Change,New Quantity,Price Sold,Discount Applied\n'); // Updated header
+        await FileSystem.writeAsStringAsync(filePath, 'Timestamp,Action,Item Code,Category,Brand,Item,Quantity Change,New Quantity,Price Sold,Discount Applied\n');
         setLog([]);
       } else {
         const content = await FileSystem.readAsStringAsync(filePath);
         const lines = content.split('\n').filter(line => line.trim() !== '');
-        if (lines.length > 0 && lines[0].startsWith('Timestamp,Action')) { // Check for header
-          lines.shift(); // Remove header line
+        if (lines.length > 0 && lines[0].startsWith('Timestamp,Action')) {
+          lines.shift();
         }
         const parsedLog = lines.map(line => {
           const parts = line.split(',');
-          // Expect at least 10 parts for full log entry with pricing
           if (parts.length >= 10) {
             const timestamp = parts[0];
             const action = parts[1];
@@ -286,36 +230,32 @@ const App = () => {
             const discountApplied = parts[9];
             return { timestamp, action, itemCode, category, brand, item, quantityChange, newQuantity, priceSold, discountApplied };
           }
-          return { raw: line }; // Fallback for malformed lines
+          return { raw: line };
         });
         setLog(parsedLog);
       }
     } catch (e) {
       console.error("Failed to load or create log file:", e);
       Alert.alert("Error", "Failed to load or create log file.");
-      setLog([]); // Fallback to empty log on error
+      setLog([]);
     }
   };
 
-  // Saves structured log entries to today's CSV file
   const saveLogToFile = async (currentLog) => {
     await ensureLogDirectoryExists();
     const filePath = getTodayLogFilePath();
     try {
-      let csvContent = "Timestamp,Action,Item Code,Category,Brand,Item,Quantity Change,New Quantity,Price Sold,Discount Applied\n"; // CSV Header
+      let csvContent = "Timestamp,Action,Item Code,Category,Brand,Item,Quantity Change,New Quantity,Price Sold,Discount Applied\n";
       currentLog.forEach(entry => {
-        // Skip malformed entries that do not have essential properties
         if (!entry.timestamp || !entry.action || !entry.itemCode || !entry.category || !entry.brand || !entry.item) {
           console.warn("Skipping malformed log entry during save:", entry);
-          return; // Skip this entry
+          return;
         }
 
-        // Ensure values are properly quoted if they contain commas
         const safeCategory = entry.category.includes(',') ? `"${entry.category}"` : entry.category;
         const safeBrand = entry.brand.includes(',') ? `"${entry.brand}"` : entry.brand;
         const safeItem = entry.item.includes(',') ? `"${entry.item}"` : entry.item;
 
-        // Robust price handling: convert to float, then check for NaN, then toFixed
         let priceValue = entry.priceSold;
         if (typeof priceValue === 'string' && priceValue !== 'N/A') {
             priceValue = parseFloat(priceValue);
@@ -333,7 +273,6 @@ const App = () => {
     }
   };
 
-  // Loads inventory data from JSON file, generating defaults if needed
   const loadInventory = async (currentMenuData) => {
     try {
       const fileInfo = await FileSystem.getInfoAsync(INVENTORY_FILE);
@@ -344,9 +283,7 @@ const App = () => {
         newInventory = JSON.parse(content);
       }
 
-      // Generate default inventory for all known items if they are not already loaded
       currentMenuData.categories.forEach(categoryObj => {
-        // Only add to inventory if not 'Clips, etc.' or 'Other' category
         if (categoryObj.name !== 'Clips, etc.' && categoryObj.name !== 'Other') {
           if (!newInventory[categoryObj.name]) {
             newInventory[categoryObj.name] = {};
@@ -355,30 +292,28 @@ const App = () => {
             if (!newInventory[categoryObj.name][brandObj.name]) {
               newInventory[categoryObj.name][brandObj.name] = {};
             }
-            brandObj.items.forEach(itemObj => { // Iterate over item objects
-              const itemName = itemObj.name; // Get item name
-              const itemPrice = itemObj.price !== undefined ? itemObj.price : DEFAULT_ITEM_PRICE; // Get item price or default
+            brandObj.items.forEach(itemObj => {
+              const itemName = itemObj.name;
+              const itemPrice = itemObj.price !== undefined ? itemObj.price : DEFAULT_ITEM_PRICE;
 
                 if (newInventory[categoryObj.name]?.[brandObj.name]?.[itemName]) {
-                  // If item exists, ensure quantity is a number
                   let existingItem = newInventory[categoryObj.name][brandObj.name][itemName];
                   if (typeof existingItem.quantity !== 'number' || isNaN(existingItem.quantity)) {
-                      existingItem.quantity = DEFAULT_ITEM_QUANTITY; // Reset to default if not a valid number
-                      existingItem.lastChange = 'Quantity Corrected'; // Log correction
+                      existingItem.quantity = DEFAULT_ITEM_QUANTITY;
+                      existingItem.lastChange = 'Quantity Corrected';
                       existingItem.lastChangeDate = new Date().toLocaleString();
                   }
-                  if (existingItem.price === undefined) { // Ensure price is also present
+                  if (existingItem.price === undefined) {
                       existingItem.price = itemPrice;
                   }
                 } else {
-                  // If item does not exist, initialize it
                   newInventory[categoryObj.name][brandObj.name][itemName] = {
                     itemCode: generateUniqueItemCode(categoryObj.name, brandObj.name, itemName),
                     category: categoryObj.name,
                     brand: brandObj.name,
                     item: itemName,
                     quantity: DEFAULT_ITEM_QUANTITY,
-                    price: itemPrice, // Initialize with price
+                    price: itemPrice,
                     lastChange: 'Initial',
                     lastChangeDate: new Date().toLocaleString()
                   };
@@ -388,10 +323,8 @@ const App = () => {
         }
       });
 
-      // Clean up inventory: remove items/brands/categories that are no longer in menuData
       const cleanedInventory = {};
       currentMenuData.categories.forEach(categoryObj => {
-        // Only clean up if category is tracked in inventory (not 'Clips, etc.' or 'Other')
         if (categoryObj.name !== 'Clips, etc.' && categoryObj.name !== 'Other') {
           cleanedInventory[categoryObj.name] = {};
           categoryObj.brands.forEach(brandObj => {
@@ -405,19 +338,16 @@ const App = () => {
           });
         }
       });
-      // Removed specific handling for 'Other' category custom items as they should not be in inventory at all.
 
       setInventory(cleanedInventory);
-      // Immediately save the potentially updated inventory (with defaults) back to file
       await saveInventory(cleanedInventory);
 
     } catch (e) {
       console.error("Failed to load inventory:", e);
       Alert.alert("Error", "Failed to load inventory data. Initializing defaults.");
-      // Fallback to generating defaults on error
       let defaultInventory = {};
       DEFAULT_MENUS.categories.forEach(categoryObj => {
-        if (categoryObj.name !== 'Clips, etc.' && categoryObj.name !== 'Other') { // Do not add 'Clips, etc.' or 'Other' to default inventory
+        if (categoryObj.name !== 'Clips, etc.' && categoryObj.name !== 'Other') {
           defaultInventory[categoryObj.name] = {};
           categoryObj.brands.forEach(brandObj => {
             defaultInventory[categoryObj.name][brandObj.name] = {};
@@ -441,7 +371,6 @@ const App = () => {
     }
   };
 
-  // Saves inventory data to JSON file
   const saveInventory = async (currentInventory) => {
     try {
       await FileSystem.writeAsStringAsync(INVENTORY_FILE, JSON.stringify(currentInventory, null, 2));
@@ -451,7 +380,6 @@ const App = () => {
     }
   };
 
-  // Loads menus (categories, brands, items) from JSON
   const loadMenus = async () => {
     try {
       const fileInfo = await FileSystem.getInfoAsync(MENUS_FILE);
@@ -462,54 +390,46 @@ const App = () => {
         loadedMenuData = JSON.parse(content);
       }
 
-      // If no menu data loaded, use defaults
       if (!loadedMenuData || !loadedMenuData.categories || loadedMenuData.categories.length === 0) {
         loadedMenuData = DEFAULT_MENUS;
       }
 
-      // Ensure 'Clips, etc.' category exists and is populated directly with items
       let clipsCategory = loadedMenuData.categories.find(cat => cat.name === 'Clips, etc.');
       if (!clipsCategory) {
-        // Create the category and its internal 'Fixed Prices' brand
         clipsCategory = { name: 'Clips, etc.', brands: [{ name: 'Fixed Prices', items: [] }] };
         loadedMenuData.categories.push(clipsCategory);
       }
 
-      // Ensure the 'Fixed Prices' brand exists within 'Clips, etc.' category, or create it
       let fixedPricesBrand = clipsCategory.brands.find(brand => brand.name === 'Fixed Prices');
       if (!fixedPricesBrand) {
           fixedPricesBrand = { name: 'Fixed Prices', items: [] };
           clipsCategory.brands.push(fixedPricesBrand);
       }
 
-      // Updated fixed prices including new values
       const fixedPrices = [
         2, 5, 10, 12, 14, 18, 20, 22, 25, 30,
         40, 50, 60, 70, 80, 90, 100, 110, 120, 130,
         140, 150, 160, 170, 180, 190, 200, 250
       ];
-      // Clear existing fixed prices and re-add to ensure consistency
       fixedPricesBrand.items = [];
       fixedPrices.forEach(price => {
-        const itemName = `$${price}.00`; // Display name for the button
-        // Add to the 'Fixed Prices' brand within 'Clips, etc.'
+        const itemName = `$${price}.00`;
         fixedPricesBrand.items.push({ name: itemName, price: price });
       });
 
 
       setMenuData(loadedMenuData);
-      await saveMenus(loadedMenuData); // Save back to ensure defaults are written
-      return loadedMenuData; // Return loaded data for use in loadInventory
+      await saveMenus(loadedMenuData);
+      return loadedMenuData;
     } catch (e) {
       console.error("Failed to load menus:", e);
       Alert.alert("Error", "Failed to load menu data. Initializing defaults.");
       setMenuData(DEFAULT_MENUS);
       await saveMenus(DEFAULT_MENUS);
-      return DEFAULT_MENUS; // Return default data on error
+      return DEFAULT_MENUS;
     }
   };
 
-  // Saves menus (categories, brands, items) to JSON
   const saveMenus = async (currentMenuData) => {
     try {
       await FileSystem.writeAsStringAsync(MENUS_FILE, JSON.stringify(currentMenuData, null, 2));
@@ -519,30 +439,28 @@ const App = () => {
     }
   };
 
-  // Loads color scheme from JSON file
   const loadColorScheme = async () => {
     try {
       const fileInfo = await FileSystem.getInfoAsync(COLOR_SCHEME_FILE);
       if (fileInfo.exists) {
         const content = await FileSystem.readAsStringAsync(COLOR_SCHEME_FILE);
         const scheme = JSON.parse(content);
-        if (COLOR_PALETTES[scheme]) { // Validate loaded scheme
+        if (COLOR_PALETTES[scheme]) {
           setColorScheme(scheme);
         } else {
           setColorScheme(DEFAULT_COLOR_SCHEME);
         }
       } else {
         setColorScheme(DEFAULT_COLOR_SCHEME);
-        await saveColorScheme(DEFAULT_COLOR_SCHEME); // Save default if file does not exist
+        await saveColorScheme(DEFAULT_COLOR_SCHEME);
       }
     } catch (e) {
       console.error("Failed to load color scheme:", e);
       Alert.alert("Error", "Failed to load color scheme. Using default.");
-      setColorScheme(DEFAULT_COLOR_SCHEME); // Fallback to default on error
+      setColorScheme(DEFAULT_COLOR_SCHEME);
     }
   };
 
-  // Saves color scheme to JSON file
   const saveColorScheme = async (scheme) => {
     try {
       await FileSystem.writeAsStringAsync(COLOR_SCHEME_FILE, JSON.stringify(scheme));
@@ -552,35 +470,47 @@ const App = () => {
     }
   };
 
-  // --- Data Management Functions ---
+  const loadLayaway = async () => {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(LAYAWAY_FILE);
+      if (fileInfo.exists) {
+        const content = await FileSystem.readAsStringAsync(LAYAWAY_FILE);
+        setLayawayItems(JSON.parse(content));
+      } else {
+        setLayawayItems([]);
+        await saveLayaway([]);
+      }
+    } catch (e) {
+      console.error("Failed to load layaway items:", e);
+      Alert.alert("Error", "Failed to load layaway items. Initializing empty list.");
+      setLayawayItems([]);
+    }
+  };
 
-  // Adds a new structured entry to the log and saves it
+  const saveLayaway = async (currentLayawayItems) => {
+    try {
+      await FileSystem.writeAsStringAsync(LAYAWAY_FILE, JSON.stringify(currentLayawayItems, null, 2));
+    } catch (e) {
+      console.error("Failed to save layaway items:", e);
+      Alert.alert("Error", "Failed to save layaway items.");
+    }
+  };
+
+  // --- Data Management Functions ---
   const addToLog = (action, itemCode, category, brand, item, quantityChange, newQuantity, priceSold = 'N/A', discountApplied = 'No') => {
     const timestamp = new Date().toLocaleString();
     const newEntry = {
-      timestamp,
-      action,
-      itemCode,
-      category,
-      brand,
-      item,
-      quantityChange,
-      newQuantity,
-      priceSold: priceSold,
-      discountApplied
+      timestamp, action, itemCode, category, brand, item, quantityChange, newQuantity, priceSold: priceSold, discountApplied
     };
     setLog(prevLog => {
       const updatedLog = [...prevLog, newEntry];
-      saveLogToFile(updatedLog); // Save to file immediately
+      saveLogToFile(updatedLog);
       return updatedLog;
     });
   };
 
-  // Updates inventory and saves it
   const updateInventory = (category, brand, item, updatedItemData) => {
-    // Only update inventory if the category is not 'Clips, etc.' or 'Other'
     if (category === 'Clips, etc.' || category === 'Other') {
-      // For these categories, only log the sale, do not track inventory quantity
       return;
     }
 
@@ -589,7 +519,7 @@ const App = () => {
       if (!newInventory[category]) newInventory[category] = {};
       if (!newInventory[category][brand]) newInventory[category][brand] = {};
       newInventory[category][brand][item] = updatedItemData;
-      saveInventory(newInventory); // Save to file immediately
+      saveInventory(newInventory);
       return newInventory;
     });
   };
@@ -598,14 +528,15 @@ const App = () => {
   useEffect(() => {
     const initializeAppData = async () => {
       await ensureLogDirectoryExists();
-      await loadColorScheme(); // Load color scheme first
-      const loadedMenuResult = await loadMenus(); // Load menus first and get the result
-      await loadInventory(loadedMenuResult); // Pass loaded menus for inventory initialization
-      await loadLogFromFile(); // Ensure today's log file is ready
+      await loadColorScheme();
+      const loadedMenuResult = await loadMenus();
+      await loadInventory(loadedMenuResult);
+      await loadLayaway();
+      await loadLogFromFile();
       setIsLoading(false);
     };
     initializeAppData();
-  }, []); // Empty dependency array means this runs once on mount
+  }, []);
 
   // --- Navigation Functions ---
   const showMainView = () => setCurrentView('main');
@@ -613,7 +544,8 @@ const App = () => {
   const showInventoryView = () => setCurrentView('inventory');
   const showFileManagementView = () => setCurrentView('file_management');
   const showDevelopmentView = () => setCurrentView('development');
-  const showMenuManagementView = () => setCurrentView('menu_management'); // Navigation to menu management
+  const showMenuManagementView = () => setCurrentView('menu_management');
+  const showLayawayManagementView = () => setCurrentView('layaway_management');
 
   // --- Development Reset Function ---
   const resetAppData = async () => {
@@ -627,30 +559,29 @@ const App = () => {
           onPress: async () => {
             setIsLoading(true);
             try {
-              // Clear states
               setLog([]);
               setInventory({});
-              setMenuData(DEFAULT_MENUS); // Reset to default menus
+              setLayawayItems([]);
+              setMenuData(DEFAULT_MENUS);
               setCashierNumber('0');
-              setColorScheme(DEFAULT_COLOR_SCHEME); // Reset color scheme
-              setLastCompletedSaleTotal(0); // Reset last completed sale total
+              setColorScheme(DEFAULT_COLOR_SCHEME);
+              setLastCompletedSaleTotal(0);
 
-              // Delete files (excluding CONFIG_BACKUP_FILE)
               await FileSystem.deleteAsync(INVENTORY_FILE, { idempotent: true });
-              await FileSystem.deleteAsync(MENUS_FILE, { idempotent: true }); // Delete menus file
-              await FileSystem.deleteAsync(COLOR_SCHEME_FILE, { idempotent: true }); // Delete color scheme file
-              // await FileSystem.deleteAsync(CONFIG_BACKUP_FILE, { idempotent: true }); // Removed this line as per user request
-              // Delete log directory contents
+              await FileSystem.deleteAsync(MENUS_FILE, { idempotent: true });
+              await FileSystem.deleteAsync(COLOR_SCHEME_FILE, { idempotent: true });
+              await FileSystem.deleteAsync(CONFIG_BACKUP_FILE, { idempotent: true });
+              await FileSystem.deleteAsync(LAYAWAY_FILE, { idempotent: true });
               const files = await FileSystem.readDirectoryAsync(LOG_DIRECTORY);
               for (const file of files) {
                 await FileSystem.deleteAsync(LOG_DIRECTORY + file, { idempotent: true });
               }
 
-              // Re-initialize to ensure default inventory and log file are created
-              await saveMenus(DEFAULT_MENUS); // Save default menus first
-              await loadInventory(DEFAULT_MENUS); // Pass default menus for inventory initialization
+              await saveMenus(DEFAULT_MENUS);
+              await loadInventory(DEFAULT_MENUS);
+              await saveLayaway([]);
               await loadLogFromFile();
-              await saveColorScheme(DEFAULT_COLOR_SCHEME); // Save default color scheme
+              await saveColorScheme(DEFAULT_COLOR_SCHEME);
 
               Alert.alert("Success", "All data has been reset and re-initialized.");
             } catch (e) {
@@ -658,7 +589,7 @@ const App = () => {
               Alert.alert("Error", "Failed to reset data.");
             } finally {
               setIsLoading(false);
-              showMainView(); // Go back to main view
+              showMainView();
             }
           }
         }
@@ -666,7 +597,6 @@ const App = () => {
     );
   };
 
-  // Populates example items
   const populateExampleItems = async () => {
     Alert.alert(
       "Populate Example Items",
@@ -703,7 +633,6 @@ const App = () => {
                       existingBrand.items.push({ name: itemName, price: itemPrice });
                     }
 
-                    // Only add to inventory if not 'Clips, etc.' or 'Other' category
                     if (exampleCategory.name !== 'Clips, etc.' && exampleCategory.name !== 'Other') {
                       if (!currentInventory[exampleCategory.name]) {
                         currentInventory[exampleCategory.name] = {};
@@ -752,10 +681,12 @@ const App = () => {
     try {
       const menuContent = await FileSystem.readAsStringAsync(MENUS_FILE);
       const inventoryContent = await FileSystem.readAsStringAsync(INVENTORY_FILE);
+      const layawayContent = await FileSystem.readAsStringAsync(LAYAWAY_FILE);
 
       const configData = {
         menus: JSON.parse(menuContent),
-        inventory: JSON.parse(inventoryContent)
+        inventory: JSON.parse(inventoryContent),
+        layaway: JSON.parse(layawayContent)
       };
 
       await FileSystem.writeAsStringAsync(CONFIG_BACKUP_FILE, JSON.stringify(configData, null, 2));
@@ -770,7 +701,7 @@ const App = () => {
   const importConfig = async () => {
     Alert.alert(
       "Import Configuration",
-      "Are you sure you want to import configuration data? This will OVERWRITE your current menus and inventory. To import, you must first manually place the 'inventory_config_backup.json' file into this app's documents folder on your device.",
+      "Are you sure you want to import configuration data? This will OVERWRITE your current menus, inventory, and layaway items. To import, you must first manually place the 'inventory_config_backup.json' file into this app's documents folder on your device.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -788,21 +719,23 @@ const App = () => {
               const content = await FileSystem.readAsStringAsync(CONFIG_BACKUP_FILE);
               const configData = JSON.parse(content);
 
-              if (configData.menus && configData.inventory) {
+              if (configData.menus && configData.inventory && configData.layaway) {
                 setMenuData(configData.menus);
                 setInventory(configData.inventory);
+                setLayawayItems(configData.layaway);
                 await saveMenus(configData.menus);
                 await saveInventory(configData.inventory);
+                await saveLayaway(configData.layaway);
                 Alert.alert("Import Successful", "Configuration data imported successfully.");
               } else {
-                Alert.alert("Import Failed", "Invalid configuration file format. Please ensure the JSON contains 'menus' and 'inventory' keys.");
+                Alert.alert("Import Failed", "Invalid configuration file format. Please ensure the JSON contains 'menus', 'inventory', and 'layaway' keys.");
               }
             } catch (e) {
               console.error("Failed to import config:", e);
               Alert.alert("Import Failed", "Could not import configuration data. Please check the file format and ensure it is a valid JSON.");
             } finally {
               setIsLoading(false);
-              showMainView(); // Go back to main view after import attempt
+              showMainView();
             }
           }
         }
@@ -819,10 +752,8 @@ const App = () => {
     );
   }
 
-  // Determine current colors based on selected scheme
   const colors = getColors(colorScheme);
 
-  // The main render function. It decides which screen to show.
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, paddingTop: Platform.OS === 'android' ? 30 : 0 }]}>
       <View style={[styles.header, { backgroundColor: colors.headerBg }]}>
@@ -842,14 +773,18 @@ const App = () => {
           updateInventory={updateInventory}
           showLogView={showLogView}
           showInventoryView={showInventoryView}
-          showMenuManagementView={showMenuManagementView} // Pass navigation to menu management
-          menuData={menuData} // Pass hierarchical menu data
-          colors={colors} // Pass colors to child components
-          setInventory={setInventory} // Pass setInventory for custom item creation
-          saveInventory={saveInventory} // Pass saveInventory for custom item creation
-          saveMenus={saveMenus} // Pass saveMenus for custom item creation
-          setMenuData={setMenuData} // Pass setMenuData for custom item creation
-          setLastCompletedSaleTotal={setLastCompletedSaleTotal} // Pass setter for last completed sale total
+          showMenuManagementView={showMenuManagementView}
+          showLayawayManagementView={showLayawayManagementView}
+          menuData={menuData}
+          colors={colors}
+          setInventory={setInventory}
+          saveInventory={saveInventory}
+          saveMenus={saveMenus}
+          setMenuData={setMenuData}
+          setLastCompletedSaleTotal={setLastCompletedSaleTotal}
+          layawayItems={layawayItems}
+          setLayawayItems={setLayawayItems}
+          saveLayaway={saveLayaway}
         />
       ) : currentView === 'log' ? (
         <LogScreen
@@ -857,7 +792,7 @@ const App = () => {
           showMainView={showMainView}
           showFileManagementView={showFileManagementView}
           colors={colors}
-          lastCompletedSaleTotal={lastCompletedSaleTotal} // Pass last completed sale total
+          lastCompletedSaleTotal={lastCompletedSaleTotal}
         />
       ) : currentView === 'inventory' ? (
         <InventoryManagementScreen
@@ -866,7 +801,7 @@ const App = () => {
           addToLog={addToLog}
           showMainView={showMainView}
           menuData={menuData}
-          colors={colors} // Pass colors
+          colors={colors}
         />
       ) : currentView === 'file_management' ? (
         <FileManagementScreen showLogView={showLogView} colors={colors} />
@@ -876,16 +811,17 @@ const App = () => {
           showMainView={showMainView}
           cashierNumber={cashierNumber}
           setCashierNumber={setCashierNumber}
-          colorScheme={colorScheme} // Pass current scheme
-          setColorScheme={setColorScheme} // Pass setter for scheme
-          saveColorScheme={saveColorScheme} // Pass save function
-          showMenuManagementView={showMenuManagementView} // Pass menu management view
-          populateExampleItems={populateExampleItems} // Pass populate example items function
-          exportConfig={exportConfig} // Pass export config function
-          importConfig={importConfig} // Pass import config function
-          colors={colors} // Pass colors
+          colorScheme={colorScheme}
+          setColorScheme={setColorScheme}
+          saveColorScheme={saveColorScheme}
+          showMenuManagementView={showMenuManagementView}
+          populateExampleItems={populateExampleItems}
+          exportConfig={exportConfig}
+          importConfig={importConfig}
+          isEditModeEnabled={isEditModeEnabled}
+          colors={colors}
         />
-      ) : currentView === 'menu_management' ? ( // Menu management screen rendering
+      ) : currentView === 'menu_management' ? (
         <MenuManagementScreen
           menuData={menuData}
           setMenuData={setMenuData}
@@ -896,42 +832,150 @@ const App = () => {
           addToLog={addToLog}
           showMainView={showMainView}
           isEditModeEnabled={isEditModeEnabled}
-          colors={colors} // Pass colors
+          colors={colors}
+        />
+      ) : currentView === 'layaway_management' ? (
+        <LayawayManagementScreen
+          layawayItems={layawayItems}
+          setLayawayItems={setLayawayItems}
+          saveLayaway={saveLayaway}
+          inventory={inventory}
+          setInventory={setInventory}
+          saveInventory={saveInventory}
+          addToLog={addToLog}
+          showMainView={showMainView}
+          colors={colors}
         />
       ) : null}
     </SafeAreaView>
   );
 };
 
+// --- Discount Modal Component ---
+const DiscountModal = ({ isVisible, onClose, onSelectDiscount, onManualDiscount, onGoBack, onCancelSale, itemDetails, colors }) => {
+  const [manualPercentage, setManualPercentage] = useState('');
+
+  // Reset manual percentage when modal opens for a new item
+  useEffect(() => {
+    if (isVisible) {
+      setManualPercentage('');
+    }
+  }, [isVisible, itemDetails]);
+
+  const handleManualDiscountSubmit = () => {
+    const percentage = parseFloat(manualPercentage);
+    if (!isNaN(percentage) && percentage >= 0 && percentage <= 100) {
+      onManualDiscount(percentage);
+      onClose(); // Close modal after applying
+    } else {
+      Alert.alert("Invalid Input", "Please enter a valid percentage between 0 and 100.");
+    }
+  };
+
+  return (
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={isVisible}
+      onRequestClose={onClose}
+    >
+      <View style={styles.centeredView}>
+        <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Price Adjustment</Text>
+          <Text style={[styles.modalSubtitle, { color: colors.text }]}>
+            Choose an option for "{itemDetails.item}" (Current: ${itemDetails.currentPrice.toFixed(2)})
+          </Text>
+
+          <View style={styles.modalButtonGrid}>
+            {[10, 15, 30, 40, 60].map(discount => (
+              <TouchableOpacity
+                key={`${discount}%`}
+                style={[styles.modalButton, { backgroundColor: colors.buttonBgPrimary }]}
+                onPress={() => {
+                  onSelectDiscount(discount);
+                  onClose();
+                }}
+              >
+                <Text style={[styles.buttonText, { color: colors.headerText }]}>Apply {discount}% Discount</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.modalSubtitle, { color: colors.text, marginTop: 20 }]}>Manual Discount:</Text>
+          <TextInput
+            style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+            placeholder="Enter % (e.g., 25)"
+            placeholderTextColor={colors.logDetails}
+            keyboardType="numeric"
+            value={manualPercentage}
+            onChangeText={setManualPercentage}
+          />
+          <TouchableOpacity
+            style={[styles.modalButton, { backgroundColor: colors.buttonBgSecondary, width: '100%' }]}
+            onPress={handleManualDiscountSubmit}
+          >
+            <Text style={[styles.buttonText, { color: colors.headerText }]}>Apply Manual Discount</Text>
+          </TouchableOpacity>
+
+          <View style={styles.modalActionButtons}>
+            <TouchableOpacity
+              style={[styles.modalActionButton, { backgroundColor: colors.buttonBgTertiary }]}
+              onPress={() => {
+                onGoBack();
+                onClose();
+              }}
+            >
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Back</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalActionButton, { backgroundColor: colors.buttonBgDanger }]}
+              onPress={() => {
+                onCancelSale();
+                onClose();
+              }}
+            >
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel Sale</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+
 // --- Main Screen Component ---
-// This component handles the primary user interaction: selecting categories, brands, and items.
-const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInventoryView, showMenuManagementView, menuData, colors, setInventory, saveInventory, saveMenus, setMenuData, setLastCompletedSaleTotal }) => {
+const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInventoryView, showMenuManagementView, showLayawayManagementView, menuData, colors, setInventory, saveInventory, saveMenus, setMenuData, setLastCompletedSaleTotal, layawayItems, setLayawayItems, saveLayaway }) => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [customItemInput, setCustomItemInput] = useState('');
-  const [customItemPriceInput, setCustomItemPriceInput] = useState(String(DEFAULT_ITEM_PRICE.toFixed(2))); // State for custom item price
+  const [customItemPriceInput, setCustomItemPriceInput] = useState(String(DEFAULT_ITEM_PRICE.toFixed(2)));
   const [searchTerm, setSearchTerm] = useState('');
-  const [allSearchableItems, setAllSearchableItems] = useState([]); // State for flattened items for search
-  const [currentSaleTotal, setCurrentSaleTotal] = useState(0); // State for current sale total
-  const [currentSaleItems, setCurrentSaleItems] = useState([]); // State for items in the current sale
-  const [isClipAdjustmentMode, setIsClipAdjustmentMode] = useState(false); // New state for clip adjustment mode
+  const [allSearchableItems, setAllSearchableItems] = useState([]);
+  const [currentSaleTotal, setCurrentSaleTotal] = useState(0);
+  const [currentSaleItems, setCurrentSaleItems] = useState([]);
+  const [isClipAdjustmentMode, setIsClipAdjustmentMode] = useState(false);
 
-  // Effect to flatten all items for search whenever inventory or menuData changes
+  // New states for the custom discount modal
+  const [showDiscountModal, setShowDiscountModal] = useState(false);
+  const [discountModalProps, setDiscountModalProps] = useState({
+    category: '', brand: '', item: '', currentPrice: 0, noInventoryUpdate: false, passedItemData: null
+  });
+
   useEffect(() => {
     const flattenedItems = [];
     menuData.categories.forEach(categoryObj => {
       categoryObj.brands.forEach(brandObj => {
         brandObj.items.forEach(itemObj => {
-          // Only include items in search if they are tracked in inventory or are 'Clips, etc.'
           if (categoryObj.name === 'Clips, etc.') {
             flattenedItems.push({
               itemCode: generateUniqueItemCode(categoryObj.name, brandObj.name, itemObj.name),
               category: categoryObj.name,
               brand: brandObj.name,
               item: itemObj.name,
-              quantity: 'N/A', // Not tracked in inventory
+              quantity: 'N/A',
               price: itemObj.price,
-              displayPath: `${categoryObj.name} > ${itemObj.name}` // Adjusted display path for clips
+              displayPath: `${categoryObj.name} > ${itemObj.name}`
             });
           } else {
             const itemData = inventory[categoryObj.name]?.[brandObj.name]?.[itemObj.name];
@@ -946,20 +990,17 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
       });
     });
 
-    // Add dynamically added 'Other' items to the flattened list
-    // Only include 'Other' custom items if they are logged, not if they are in inventory
     const otherCategory = menuData.categories.find(cat => cat.name === 'Other');
     if (otherCategory) {
       const customBrand = otherCategory.brands.find(brand => brand.name === 'Custom');
       if (customBrand) {
         customBrand.items.forEach(itemObj => {
-          // For 'Other' custom items, we don't have them in 'inventory' state, so we construct a temporary itemData
           flattenedItems.push({
             itemCode: generateUniqueItemCode('Other', 'Custom', itemObj.name),
             category: 'Other',
             brand: 'Custom',
             item: itemObj.name,
-            quantity: 'N/A', // Not tracked in inventory
+            quantity: 'N/A',
             price: itemObj.price,
             displayPath: `Other > Custom > ${itemObj.name}`
           });
@@ -970,7 +1011,6 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
   }, [inventory, menuData]);
 
 
-  // Filtered categories, brands, and items based on search term and current selection
   const filteredCategories = menuData.categories.filter(cat =>
     cat.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -984,12 +1024,11 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
 
   const currentBrandObj = currentCategoryObj?.brands.find(brand => brand.name === selectedBrand);
   const filteredItems = currentBrandObj
-    ? currentBrandObj.items.filter(itemObj => // Filter item objects
+    ? currentBrandObj.items.filter(itemObj =>
         itemObj.name.toLowerCase().includes(searchTerm.toLowerCase())
       )
     : [];
 
-  // Filtered items for global search
   const globallyFilteredItems = allSearchableItems.filter(item =>
     item.displayPath.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.itemCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1001,7 +1040,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     setSelectedCategory(categoryName);
     setSelectedBrand(null);
     setSearchTerm('');
-    setIsClipAdjustmentMode(false); // Hide picker if category changes
+    setIsClipAdjustmentMode(false);
   };
 
   const handleBrandSelect = (brandName) => {
@@ -1009,41 +1048,36 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     setSearchTerm('');
   };
 
-  // Main function to handle item click for sale (with pricing options)
   const handleItemClickForSale = (category, brand, item) => {
     let itemData = inventory[category]?.[brand]?.[item];
-    let priceToUse = itemData?.price; // Default to item's price if it exists
+    let priceToUse = itemData?.price;
 
-    // If item does not exist in inventory (e.g., a newly added 'Other' item or 'Clips, etc.')
     if (!itemData || category === 'Clips, etc.' || category === 'Other') {
-      // For 'Clips, etc.' category, get price from menuData directly
       if (category === 'Clips, etc.') {
         const categoryObj = menuData.categories.find(c => c.name === category);
         const menuItem = categoryObj?.brands.find(b => b.name === 'Fixed Prices')?.items.find(i => i.name === item);
         if (menuItem) {
           priceToUse = menuItem.price;
-          // For clips, construct a temporary itemData object for logging purposes
           const tempItemData = {
             itemCode: generateUniqueItemCode(category, brand, item),
             category: category,
             brand: brand,
             item: item,
-            quantity: 'N/A', // Not tracked in inventory
+            quantity: 'N/A',
             price: priceToUse,
           };
-          // If in clip adjustment mode, go to price adjustment options
           if (isClipAdjustmentMode) {
-            showPriceAdjustmentOptions(category, brand, item, priceToUse, true, tempItemData);
+            // Show custom discount modal
+            setDiscountModalProps({ category, brand, item, currentPrice: priceToUse, noInventoryUpdate: true, passedItemData: tempItemData });
+            setShowDiscountModal(true);
           } else {
             handleLogSale(category, brand, item, priceToUse, 'No', true, tempItemData);
           }
         } else {
           Alert.alert("Error", "Clip item not found in menu data.");
         }
-        return; // Exit after logging sale
+        return;
       } else if (category === 'Other') {
-        // For 'Other' custom items, price is taken from the input field
-        // This path is usually taken when selecting from search results for 'Other' items
         const categoryObj = menuData.categories.find(c => c.name === category);
         const brandObj = categoryObj?.brands.find(b => b.name === 'Custom');
         const menuItem = brandObj?.items.find(i => i.name === item);
@@ -1054,21 +1088,17 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
             category: category,
             brand: brand,
             item: item,
-            quantity: 'N/A', // Not tracked in inventory
+            quantity: 'N/A',
             price: priceToUse,
           };
           handleLogSale(category, brand, item, priceToUse, 'No', true, tempItemData);
         } else {
-          // This should ideally not be hit if the item is in `allSearchableItems`
           Alert.alert("Error", "Custom 'Other' item not found in menu data.");
         }
         return;
       } else {
-        // This else branch should ideally not be hit for 'Other' category
-        // as handleCustomItemSubmit is called directly from the "Log Sale" button.
-        // Keeping it as a fallback for other dynamically added items if the flow changes.
         Alert.prompt(
-          "Set Price for New Item", // Changed prompt title slightly
+          "Set Price for New Item",
           `Enter price for "${item}" (Category: ${category}, Brand: ${brand}). An item code will be generated.`,
           [
             { text: "Cancel", style: "cancel" },
@@ -1099,11 +1129,12 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
           String(DEFAULT_ITEM_PRICE.toFixed(2)),
           "numeric"
         );
-        return; // Exit after prompting
+        return;
       }
     }
 
-    // For existing inventory items, check stock and then prompt for sale
+    const currentItemPrice = (typeof itemData.price === 'number' && !isNaN(itemData.price)) ? itemData.price : DEFAULT_ITEM_PRICE;
+
     if (itemData.quantity <= 0) {
       Alert.alert(
         "Warning: Out of Stock",
@@ -1113,18 +1144,24 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
           {
             text: "Sell Anyway",
             onPress: () => {
-              // Proceed with the sale flow, potentially allowing negative quantity
               Alert.alert(
                 "Confirm Sale",
-                `Sell "${item}" for $${itemData.price.toFixed(2)}?`,
+                `Sell "${item}" for $${currentItemPrice.toFixed(2)}?`,
                 [
                   {
                     text: "Sell at Full Price",
-                    onPress: () => handleLogSale(category, brand, item, itemData.price, 'No'),
+                    onPress: () => handleLogSale(category, brand, item, currentItemPrice, 'No'),
                   },
                   {
                     text: "Adjust Price / Discount",
-                    onPress: () => showPriceAdjustmentOptions(category, brand, item, itemData.price),
+                    onPress: () => {
+                      setDiscountModalProps({ category, brand, item, currentPrice: currentItemPrice, noInventoryUpdate: false, passedItemData: itemData });
+                      setShowDiscountModal(true);
+                    },
+                  },
+                  {
+                    text: "Layaway (30% Down)",
+                    onPress: () => handleLayawayItem(category, brand, item, currentItemPrice),
                   },
                   {
                     text: "Cancel",
@@ -1136,21 +1173,27 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
           },
         ]
       );
-      return; // Exit here, as the user will either cancel or proceed via the nested alert
+      return;
     }
 
-    // Original flow for in-stock items
     Alert.alert(
       "Confirm Sale",
-      `Sell "${item}" for $${itemData.price.toFixed(2)}?`,
+      `Sell "${item}" for $${currentItemPrice.toFixed(2)}?`,
       [
         {
           text: "Sell at Full Price",
-          onPress: () => handleLogSale(category, brand, item, itemData.price, 'No'),
+          onPress: () => handleLogSale(category, brand, item, currentItemPrice, 'No'),
         },
         {
           text: "Adjust Price / Discount",
-          onPress: () => showPriceAdjustmentOptions(category, brand, item, itemData.price),
+          onPress: () => {
+            setDiscountModalProps({ category, brand, item, currentPrice: currentItemPrice, noInventoryUpdate: false, passedItemData: itemData });
+            setShowDiscountModal(true);
+          },
+        },
+        {
+          text: "Layaway (30% Down)",
+          onPress: () => handleLayawayItem(category, brand, item, currentItemPrice),
         },
         {
           text: "Cancel",
@@ -1160,101 +1203,63 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     );
   };
 
-  const showPriceAdjustmentOptions = (category, brand, item, currentPrice, noInventoryUpdate = false, passedItemData = null) => {
-    Alert.alert(
-      "Price Adjustment",
-      `Choose an option for "${item}" (Current: $${currentPrice.toFixed(2)})`,
-      [
-        {
-          text: "Apply 10% Discount",
-          onPress: () => {
-            const discountedPrice = currentPrice * 0.9;
-            // For clips and other items, we need to pass a temporary itemData for logging
-            const tempItemData = passedItemData || { itemCode: generateUniqueItemCode(category, brand, item), category, brand, item, quantity: 'N/A', price: currentPrice };
-            handleLogSale(category, brand, item, discountedPrice, '10% Discount', noInventoryUpdate, tempItemData);
-            setIsClipAdjustmentMode(false); // Exit clip adjustment mode
-          },
-        },
-        {
-          text: "Apply 40% Discount",
-          onPress: () => {
-            const discountedPrice = currentPrice * 0.6; // 100% - 40% = 60%
-            const tempItemData = passedItemData || { itemCode: generateUniqueItemCode(category, brand, item), category, brand, item, quantity: 'N/A', price: currentPrice };
-            handleLogSale(category, brand, item, discountedPrice, '40% Discount', noInventoryUpdate, tempItemData);
-            setIsClipAdjustmentMode(false); // Exit clip adjustment mode
-          },
-        },
-        {
-          text: "Apply 60% Discount",
-          onPress: () => {
-            const discountedPrice = currentPrice * 0.4; // 100% - 60% = 40%
-            const tempItemData = passedItemData || { itemCode: generateUniqueItemCode(category, brand, item), category, brand, item, quantity: 'N/A', price: currentPrice };
-            handleLogSale(category, brand, item, discountedPrice, '60% Discount', noInventoryUpdate, tempItemData);
-            setIsClipAdjustmentMode(false); // Exit clip adjustment mode
-          },
-        },
-        {
-          text: "Manual Override",
-          onPress: () => {
-            Alert.prompt(
-              "Override Price",
-              `Enter new price for "${item}":`,
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Confirm",
-                  onPress: (newPriceText) => {
-                    const newPrice = parseFloat(newPriceText);
-                    if (!isNaN(newPrice) && newPrice >= 0) {
-                      const tempItemData = passedItemData || { itemCode: generateUniqueItemCode(category, brand, item), category, brand, item, quantity: 'N/A', price: currentPrice };
-                      handleLogSale(category, brand, item, newPrice, 'Manual Override', noInventoryUpdate, tempItemData);
-                      setIsClipAdjustmentMode(false); // Exit clip adjustment mode
-                    } else {
-                      Alert.alert("Invalid Price", "Please enter a valid positive number for the price.");
-                    }
-                  },
-                },
-              ],
-              "plain-text",
-              String(currentPrice.toFixed(2)),
-              "numeric"
-            );
-          },
-        },
-        {
-          text: "Cancel",
-          style: "cancel",
-          onPress: () => setIsClipAdjustmentMode(false), // Exit clip adjustment mode on cancel
-        },
-      ]
-    );
+  // This function will now be called by the DiscountModal
+  const handleApplyDiscount = (discountPercentage) => {
+    const { category, brand, item, currentPrice, noInventoryUpdate, passedItemData } = discountModalProps;
+    const discountedPrice = currentPrice * (1 - (discountPercentage / 100));
+    const tempItemData = passedItemData || { itemCode: generateUniqueItemCode(category, brand, item), category, brand, item, quantity: 'N/A', price: currentPrice };
+    handleLogSale(category, brand, item, discountedPrice, `${discountPercentage}% Discount`, noInventoryUpdate, tempItemData);
+    setIsClipAdjustmentMode(false); // Ensure clip adjustment mode is off
+  };
+
+  // This function will be called by the DiscountModal for manual input
+  const handleApplyManualDiscount = (percentage) => {
+    const { category, brand, item, currentPrice, noInventoryUpdate, passedItemData } = discountModalProps;
+    const discountedPrice = currentPrice * (1 - (percentage / 100));
+    const tempItemData = passedItemData || { itemCode: generateUniqueItemCode(category, brand, item), category, brand, item, quantity: 'N/A', price: currentPrice };
+    handleLogSale(category, brand, item, discountedPrice, `${percentage}% Discount`, noInventoryUpdate, tempItemData);
+    setIsClipAdjustmentMode(false); // Ensure clip adjustment mode is off
+  };
+
+  // This function will be called by the DiscountModal's "Back" button
+  const handleDiscountModalBack = () => {
+    const { category, brand, item } = discountModalProps;
+    handleItemClickForSale(category, brand, item); // Re-show the "Confirm Sale" prompt
+    setIsClipAdjustmentMode(false); // Exit clip adjustment mode
+  };
+
+  // This function will be called by the DiscountModal's "Cancel Sale" button
+  const handleDiscountModalCancelSale = () => {
+    // No action needed here, as the modal's onClose will handle closing, and the sale is cancelled
+    // by the user choosing this option. The actual sale cancellation logic is in handleCancelSale.
+    setIsClipAdjustmentMode(false); // Exit clip adjustment mode
   };
 
   const handleLogSale = (category, brand, item, priceSold, discountApplied, noInventoryUpdate = false, passedItemData = null) => {
-    // Use passedItemData if available (for newly created custom items or clips), otherwise fetch from state
     const itemData = passedItemData || inventory[category]?.[brand]?.[item];
 
     if (!itemData) {
       console.error("Error: itemData is undefined in handleLogSale for", category, brand, item);
       Alert.alert("Error", "Could not log sale due to missing item data. Please try again.");
-      return; // Prevent crash
+      return;
     }
 
     const saleItem = {
-      saleItemId: Date.now() + Math.random(), // Unique ID for removal
+      saleItemId: Date.now() + Math.random(),
       category,
       brand,
       item,
-      itemCode: itemData.itemCode || generateUniqueItemCode(category, brand, item), // Ensure itemCode is present
+      itemCode: itemData.itemCode || generateUniqueItemCode(category, brand, item),
       priceSold,
       discountApplied,
-      isInventoryTracked: category !== 'Clips, etc.' && category !== 'Other', // Flag to know if inventory needs reversal
-      originalQuantityChange: noInventoryUpdate ? 0 : -1, // Store the change for reversal
+      isInventoryTracked: category !== 'Clips, etc.' && category !== 'Other',
+      originalQuantityChange: noInventoryUpdate ? 0 : -1,
+      isLayawayDownPayment: false,
     };
     setCurrentSaleItems(prevItems => [...prevItems, saleItem]);
     setCurrentSaleTotal(prevTotal => prevTotal + priceSold);
 
-    if (!noInventoryUpdate && saleItem.isInventoryTracked) { // Only update inventory if tracked
+    if (!noInventoryUpdate && saleItem.isInventoryTracked) {
       const newQuantity = itemData.quantity - 1;
       const quantityChange = -1;
       const lastChange = `${quantityChange}`;
@@ -1268,8 +1273,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
       });
       addToLog("Sold Item", itemData.itemCode, category, brand, item, quantityChange, newQuantity, priceSold, discountApplied);
     } else {
-      // For items not tracked in inventory (like 'Clips, etc.' or 'Other'), just log the sale
-      const itemCode = itemData.itemCode || generateUniqueItemCode(category, brand, item); // Use itemData.itemCode if available, otherwise generate
+      const itemCode = itemData.itemCode || generateUniqueItemCode(category, brand, item);
       addToLog("Sold Item (No Inventory Track)", itemCode, category, brand, item, 'N/A', 'N/A', priceSold, discountApplied);
     }
 
@@ -1279,7 +1283,82 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     setSearchTerm('');
   };
 
-  // Function to remove the most recent item from the current sale
+  const handleLayawayItem = (category, brand, item, originalPrice) => {
+    const itemData = inventory[category]?.[brand]?.[item];
+
+    if (!itemData) {
+      console.error("Error: itemData is undefined in handleLayawayItem for", category, brand, item);
+      Alert.alert("Error", "Could not place item on layaway due to missing item data. Please try again.");
+      return;
+    }
+
+    const downPayment = originalPrice * 0.30;
+    const remainingBalance = originalPrice - downPayment;
+
+    const layawayEntry = {
+      layawayId: Date.now() + Math.random(),
+      itemCode: itemData.itemCode,
+      category: category,
+      brand: brand,
+      item: item,
+      originalPrice: originalPrice,
+      amountPaid: downPayment,
+      remainingBalance: remainingBalance,
+      layawayDate: new Date().toLocaleString(),
+      isInventoryTracked: category !== 'Clips, etc.' && category !== 'Other',
+    };
+
+    setLayawayItems(prevItems => {
+      const updatedLayawayItems = [...prevItems, layawayEntry];
+      saveLayaway(updatedLayawayItems);
+      return updatedLayawayItems;
+    });
+
+    const saleItem = {
+      saleItemId: Date.now() + Math.random(),
+      category,
+      brand,
+      item,
+      itemCode: itemData.itemCode,
+      priceSold: downPayment,
+      discountApplied: 'Layaway 30% Down',
+      isInventoryTracked: false,
+      originalQuantityChange: 0,
+      isLayawayDownPayment: true,
+      layawayId: layawayEntry.layawayId,
+    };
+    setCurrentSaleItems(prevItems => [...prevItems, saleItem]);
+    setCurrentSaleTotal(prevTotal => prevTotal + downPayment);
+
+
+    if (layawayEntry.isInventoryTracked) {
+      const newQuantity = itemData.quantity - 1;
+      const quantityChange = -1;
+      const lastChange = `${quantityChange}`;
+      const lastChangeDate = new Date().toLocaleString();
+
+      updateInventory(category, brand, item, {
+        ...itemData,
+        quantity: newQuantity,
+        lastChange: lastChange,
+        lastChangeDate: lastChangeDate
+      });
+      addToLog("Layaway Started", itemData.itemCode, category, brand, item, quantityChange, newQuantity, downPayment, '30% Down');
+    } else {
+      addToLog("Layaway Started (No Inventory Track)", itemData.itemCode, item.category, item.brand, item.item, 'N/A', 'N/A', downPayment, '30% Down');
+    }
+
+    Alert.alert(
+      "Layaway Initiated",
+      `${item} placed on layaway. Down payment: $${downPayment.toFixed(2)}. Remaining: $${remainingBalance.toFixed(2)}.`
+    );
+
+    setSelectedCategory(null);
+    setSelectedBrand(null);
+    setCustomItemInput('');
+    setSearchTerm('');
+  };
+
   const handleUndoLastSaleItem = () => {
     if (currentSaleItems.length === 0) {
       Alert.alert("No Items", "There are no items in the current sale to undo.");
@@ -1288,21 +1367,24 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
 
     Alert.alert(
       "Undo Last Item",
-      "Are you sure you want to remove the last item from the sale and revert inventory?",
+      "Are you sure you want to remove the last item from the sale and revert inventory (if applicable)?",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Undo",
           onPress: () => {
             setCurrentSaleItems(prevItems => {
-              const lastItem = prevItems[prevItems.length - 1]; // Get the last item
-              if (!lastItem) return prevItems; // Should not happen due to initial check
+              const lastItem = prevItems[prevItems.length - 1];
+              if (!lastItem) return prevItems;
 
-              // Revert inventory if it was an inventory-tracked item
-              if (lastItem.isInventoryTracked) {
+              if (lastItem.isLayawayDownPayment) {
+                setCurrentSaleTotal(prevTotal => prevTotal - lastItem.priceSold);
+                addToLog("Layaway Down Payment Undone (Sale)", lastItem.itemCode, lastItem.category, lastItem.brand, lastItem.item, 'N/A', 'N/A', lastItem.priceSold, lastItem.discountApplied);
+              }
+              else if (lastItem.isInventoryTracked) {
                 const itemData = inventory[lastItem.category]?.[lastItem.brand]?.[lastItem.item];
                 if (itemData) {
-                  const newQuantity = itemData.quantity - lastItem.originalQuantityChange; // originalQuantityChange is -1, so this adds 1
+                  const newQuantity = itemData.quantity - lastItem.originalQuantityChange;
                   updateInventory(lastItem.category, lastItem.brand, lastItem.item, {
                     ...itemData,
                     quantity: newQuantity,
@@ -1312,12 +1394,13 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
                   addToLog("Removed from Sale", lastItem.itemCode, lastItem.category, lastItem.brand, lastItem.item, -lastItem.originalQuantityChange, newQuantity, lastItem.priceSold, lastItem.discountApplied);
                 }
               } else {
-                // Log removal for non-inventory tracked items (e.g., clips or other)
                 addToLog("Removed from Sale (No Inventory Revert)", lastItem.itemCode, lastItem.category, lastItem.brand, lastItem.item, 'N/A', 'N/A', lastItem.priceSold, lastItem.discountApplied);
               }
 
-              setCurrentSaleTotal(prevTotal => prevTotal - lastItem.priceSold);
-              return prevItems.slice(0, -1); // Return all but the last item
+              if (!lastItem.isLayawayDownPayment) {
+                setCurrentSaleTotal(prevTotal => prevTotal - lastItem.priceSold);
+              }
+              return prevItems.slice(0, -1);
             });
           }
         }
@@ -1325,32 +1408,29 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     );
   };
 
-
-  // Function to end the current sale
   const handleEndSale = () => {
     Alert.alert(
       "Sale Complete",
       `Total for this sale: $${currentSaleTotal.toFixed(2)}`,
       [{ text: "OK", onPress: () => {
-        setLastCompletedSaleTotal(currentSaleTotal); // Set last completed sale total before resetting current
+        setLastCompletedSaleTotal(currentSaleTotal);
         setCurrentSaleTotal(0);
-        setCurrentSaleItems([]); // Reset sale items on OK
+        setCurrentSaleItems([]);
       } }]
     );
   };
 
-  // Function to cancel the current sale
   const handleCancelSale = () => {
     Alert.alert(
       "Cancel Sale",
-      "Are you sure you want to cancel the current sale? This will clear the total and revert inventory.",
+      "Are you sure you want to cancel the current sale? This will clear the total and revert inventory (if applicable). Layaway items will remain on layaway.",
       [
         { text: "No", style: "cancel" },
         {
           text: "Yes",
           onPress: () => {
             currentSaleItems.forEach(itemToRemove => {
-                if (itemToRemove.isInventoryTracked) {
+                if (itemToRemove.isInventoryTracked && !itemToRemove.isLayawayDownPayment) {
                     const itemData = inventory[itemToRemove.category]?.[itemToRemove.brand]?.[itemToRemove.item];
                     if (itemData) {
                         const newQuantity = itemData.quantity - itemToRemove.originalQuantityChange;
@@ -1366,7 +1446,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
                     addToLog("Sale Cancelled (No Inventory Revert)", itemToRemove.itemCode, itemToRemove.category, itemToRemove.brand, itemToRemove.item, 'N/A', 'N/A', itemToRemove.priceSold, itemToRemove.discountApplied);
                 }
             });
-            setLastCompletedSaleTotal(0); // Reset last completed sale total on cancel
+            setLastCompletedSaleTotal(0);
             setCurrentSaleTotal(0);
             setCurrentSaleItems([]);
           }
@@ -1375,21 +1455,18 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     );
   };
 
-
-  // Handle submitting a custom item for the 'Other' category or a new item under a brand
   const handleCustomItemSubmit = () => {
     if (customItemInput.trim() === '') {
       Alert.alert("Input Required", "Please enter an item name.");
       return;
     }
     const customItemName = customItemInput.trim();
-    const price = parseFloat(customItemPriceInput); // Get price directly from input
+    const price = parseFloat(customItemPriceInput);
     if (isNaN(price) || price < 0) {
       Alert.alert("Invalid Price", "Please enter a valid positive number for the price.");
       return;
     }
 
-    // Determine the target category and brand based on current selection, defaulting to 'Other'/'Custom'
     const targetCategory = selectedCategory || 'Other';
     const targetBrand = selectedBrand || 'Custom';
 
@@ -1402,10 +1479,9 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
             let updatedBrands = cat.brands.map(brand => {
                 if (brand.name === targetBrand) {
                     brandFound = true;
-                    // Check if item already exists to prevent duplicates
                     if (brand.items.some(itemObj => itemObj.name === customItemName)) {
                         Alert.alert("Duplicate Item", `Item "${customItemName}" already exists in ${targetCategory} > ${targetBrand}.`);
-                        return brand; // Return original brand, do not add
+                        return brand;
                     }
                     return { ...brand, items: [...brand.items, { name: customItemName, price: price }] };
                 }
@@ -1419,33 +1495,24 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
         return cat;
     });
 
-    if (!categoryFound) {
-        updatedCategories.push({
-            name: targetCategory,
-            brands: [{ name: targetBrand, items: [{ name: customItemName, price: price }] }]
-        });
-    }
-
     const finalMenuData = { ...menuData, categories: updatedCategories };
     setMenuData(finalMenuData);
     saveMenus(finalMenuData);
 
-    // For 'Other' custom items, we only log the sale, not add to inventory state
     const newItemData = {
       itemCode: generateUniqueItemCode(targetCategory, targetBrand, customItemName),
       category: targetCategory,
       brand: targetBrand,
       item: customItemName,
-      quantity: 'N/A', // Not tracked in inventory
+      quantity: 'N/A',
       price: price,
       lastChange: 'Initial (Custom Item)',
       lastChangeDate: new Date().toLocaleString()
     };
 
-    // Log the sale of this newly added custom item. Do NOT update inventory state for 'Other' category.
-    handleLogSale(targetCategory, targetBrand, customItemName, price, 'No', true, newItemData); // Pass newItemData directly and set noInventoryUpdate to true
-    setCustomItemInput(''); // Clear custom item input
-    setCustomItemPriceInput(String(DEFAULT_ITEM_PRICE.toFixed(2))); // Reset price input
+    handleLogSale(targetCategory, targetBrand, customItemName, price, 'No', true, newItemData);
+    setCustomItemInput('');
+    setCustomItemPriceInput(String(DEFAULT_ITEM_PRICE.toFixed(2)));
   };
 
 
@@ -1462,22 +1529,26 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
       />
 
       {searchTerm.length > 0 ? (
-        // --- Global Search Results View ---
         <ScrollView style={styles.selectionScrollView}>
           <Text style={[styles.title, { color: colors.text }]}>Search Results</Text>
           <View style={styles.buttonGrid}>
             {globallyFilteredItems.length > 0 ? (
               globallyFilteredItems.map((itemData) => (
                 <TouchableOpacity
-                  key={itemData.itemCode} // Use itemCode for unique key
+                  key={itemData.itemCode}
                   style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]}
                   onPress={() => handleItemClickForSale(itemData.category, itemData.brand, itemData.item)}>
                   <Text style={[styles.buttonText, { color: colors.text }]}>
                     {itemData.category === 'Clips, etc.' || itemData.category === 'Other' ? `${itemData.item}` : itemData.item}
                   </Text>
+                  <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>
+                    {itemData.category === 'Clips, etc.' ? `Fixed Price` : itemData.displayPath}
+                  </Text>
                   <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Code: {itemData.itemCode}</Text>
-                  {(itemData.category !== 'Clips, etc.' && itemData.category !== 'Other') && ( // Only show price for inventory-tracked items here
-                    <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Price: ${itemData.price.toFixed(2)}</Text>
+                  {(itemData.category !== 'Clips, etc.' && itemData.category !== 'Other') && (
+                    <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>
+                      Price: ${ (typeof itemData.price === 'number' && !isNaN(itemData.price)) ? itemData.price.toFixed(2) : 'N/A' }
+                    </Text>
                   )}
                   {(itemData.category !== 'Clips, etc.' && itemData.category !== 'Other') && itemData.quantity !== 'N/A' && (
                     <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Qty: {itemData.quantity}</Text>
@@ -1488,7 +1559,6 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
               <Text style={[styles.buttonText, { color: colors.text, width: '100%', textAlign: 'center' }]}>No matching items found.</Text>
             )}
           </View>
-          {/* Option to add a custom item if search yields no results or for general custom items */}
           <Text style={[styles.subtitle, { color: colors.text }]}>Can't find it? Add a custom item:</Text>
           <TextInput
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
@@ -1500,9 +1570,9 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
             autoCorrect={false}
           />
           <Text style={[styles.inputLabel, { color: colors.text }]}>Price:</Text>
-          <TextInput // Price input for custom item
+          <TextInput
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-            placeholder="e.g., 25.00" // Changed placeholder to be more direct
+            placeholder="e.g., 25.00"
             placeholderTextColor={colors.logDetails}
             keyboardType="numeric"
             value={customItemPriceInput}
@@ -1513,10 +1583,8 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
           </TouchableOpacity>
         </ScrollView>
       ) : (
-        // --- Standard Category/Brand/Item Selection View ---
         <>
           {!selectedCategory ? (
-            // --- Category Selection View ---
             <ScrollView style={styles.selectionScrollView}>
               <Text style={[styles.title, { color: colors.text }]}>1. Select a Category</Text>
               <View style={styles.buttonGrid}>
@@ -1532,7 +1600,6 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
               </View>
             </ScrollView>
           ) : !selectedBrand && selectedCategory !== 'Other' && selectedCategory !== 'Clips, etc.' ? (
-            // --- Brand Selection View (for selected category, excluding 'Other' and 'Clips, etc.') ---
             <ScrollView style={styles.selectionScrollView}>
               <Text style={[styles.title, { color: colors.text }]}>2. Select a Brand for {selectedCategory}</Text>
               <View style={styles.buttonGrid}>
@@ -1556,7 +1623,6 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
               </TouchableOpacity>
             </ScrollView>
           ) : selectedCategory === 'Clips, etc.' ? (
-            // --- Clips, etc. Item Selection View (directly show items, no brand selection) ---
             <ScrollView style={styles.selectionScrollView}>
               <Text style={[styles.title, { color: colors.text }]}>Fixed Price Options for Clips, etc.</Text>
               <View style={styles.buttonGrid}>
@@ -1566,19 +1632,18 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
                     style={[
                       styles.button,
                       { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor },
-                      isClipAdjustmentMode && { borderColor: colors.buttonBgSecondary, borderWidth: 2 } // Subtle color change
+                      isClipAdjustmentMode && { borderColor: colors.buttonBgSecondary, borderWidth: 2 }
                     ]}
                     onPress={() => handleItemClickForSale('Clips, etc.', 'Fixed Prices', itemObj.name)}>
                     <Text style={[styles.buttonText, { color: colors.text }]}>{itemObj.name}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-              {/* Button to adjust price for clips */}
               <TouchableOpacity
                 style={[
                   styles.actionButton,
                   { backgroundColor: colors.buttonBgSecondary, marginTop: 15 },
-                  isClipAdjustmentMode && { backgroundColor: colors.buttonBgPrimary } // Change color when active
+                  isClipAdjustmentMode && { backgroundColor: colors.buttonBgPrimary }
                 ]}
                 onPress={() => setIsClipAdjustmentMode(!isClipAdjustmentMode)}>
                 <Text style={[styles.buttonText, { color: colors.headerText }]}>
@@ -1591,15 +1656,14 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
               </TouchableOpacity>
             </ScrollView>
           ) : selectedCategory === 'Other' || selectedBrand ? (
-            // --- Item Selection or Custom Item Input View ---
             <ScrollView style={styles.selectionScrollView}>
               <Text style={[styles.title, { color: colors.text }]}>
                 {selectedCategory === 'Other' ? 'Enter Custom Item for "Other"' : `3. Select an Item for ${selectedCategory} - ${selectedBrand}`}
               </Text>
 
-              {selectedCategory !== 'Other' && ( // Show predefined items if not 'Other'
+              {selectedCategory !== 'Other' && (
                 <View style={styles.buttonGrid}>
-                  {filteredItems.map((itemObj) => { // Iterate over item objects
+                  {filteredItems.map((itemObj) => {
                     const itemName = itemObj.name;
                     const itemData = inventory[selectedCategory]?.[selectedBrand]?.[itemName];
                     return (
@@ -1613,10 +1677,14 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
                         {itemData && (itemData.category !== 'Clips, etc.' ? (
                           <>
                             <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Code: {itemData.itemCode}</Text>
-                            <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Price: ${itemData.price.toFixed(2)}</Text>
+                            <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>
+                              Price: ${ (typeof itemData.price === 'number' && !isNaN(itemData.price)) ? itemData.price.toFixed(2) : 'N/A' }
+                            </Text>
                           </>
                         ) : (
-                          <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Price: ${itemData.price.toFixed(2)}</Text>
+                          <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>
+                            Price: ${ (typeof itemData.price === 'number' && !isNaN(itemData.price)) ? itemData.price.toFixed(2) : 'N/A' }
+                          </Text>
                         ))}
                       </TouchableOpacity>
                     );
@@ -1640,9 +1708,9 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
                 autoCorrect={false}
               />
               <Text style={[styles.inputLabel, { color: colors.text }]}>Price:</Text>
-              <TextInput // Price input for custom item
+              <TextInput
                 style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-                placeholder="e.g., 25.00" // Changed placeholder to be more direct
+                placeholder="e.g., 25.00"
                 placeholderTextColor={colors.logDetails}
                 keyboardType="numeric"
                 value={customItemPriceInput}
@@ -1654,9 +1722,9 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
 
               <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={() => {
                 if (selectedCategory === 'Other') {
-                  setSelectedCategory(null); // Back to categories from 'Other' input
+                  setSelectedCategory(null);
                 } else {
-                  setSelectedBrand(null); // Back to brands from item selection
+                  setSelectedBrand(null);
                 }
               }}>
                 <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back'}</Text>
@@ -1667,7 +1735,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
       )}
 
       <View style={[styles.footer, { borderTopColor: colors.logEntryBorder, backgroundColor: colors.background }]}>
-        {currentSaleTotal > 0 ? ( // Conditionally render sale buttons
+        {currentSaleTotal > 0 ? (
           <View style={styles.saleActionsContainer}>
             <TouchableOpacity style={[styles.endSaleButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleEndSale}>
               <Text style={[styles.buttonText, { color: colors.headerText }]}>Complete Sale: ${currentSaleTotal.toFixed(2)}</Text>
@@ -1685,23 +1753,37 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
               </TouchableOpacity>
             </View>
           </View>
-        ) : ( // Render original buttons
+        ) : (
           <>
-            <TouchableOpacity style={[styles.logButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showLogView}>
-              <Text style={[styles.buttonText, { color: colors.headerText }]}>View Activity Log</Text>
+            <TouchableOpacity style={[styles.logButton, { backgroundColor: colors.buttonBgSecondary, flex: 1 }]} onPress={showLogView}>
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Activity Log</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.inventoryButton, { backgroundColor: colors.buttonBgTertiary }]} onPress={showInventoryView}>
+            <TouchableOpacity style={[styles.inventoryButton, { backgroundColor: colors.buttonBgTertiary, flex: 1 }]} onPress={showInventoryView}>
               <Text style={[styles.buttonText, { color: colors.headerText }]}>Manage Inventory</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.layawayButton, { backgroundColor: colors.buttonBgTertiary, flex: 1 }]} onPress={showLayawayManagementView}>
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Layaway</Text>
             </TouchableOpacity>
           </>
         )}
       </View>
+
+      {/* Custom Discount Modal */}
+      <DiscountModal
+        isVisible={showDiscountModal}
+        onClose={() => setShowDiscountModal(false)}
+        onSelectDiscount={handleApplyDiscount}
+        onManualDiscount={handleApplyManualDiscount}
+        onGoBack={handleDiscountModalBack}
+        onCancelSale={handleCancelSale} // Call MainScreen's handleCancelSale
+        itemDetails={discountModalProps}
+        colors={colors}
+      />
     </View>
   );
 };
 
 // --- Log Screen Component ---
-// This component displays the running log of all entries.
 const LogScreen = ({ log, showMainView, showFileManagementView, colors, lastCompletedSaleTotal }) => {
   return (
     <View style={styles.contentContainer}>
@@ -1715,7 +1797,6 @@ const LogScreen = ({ log, showMainView, showFileManagementView, colors, lastComp
       )}
       <ScrollView style={[styles.logContainer, { backgroundColor: colors.cardBg, marginTop: lastCompletedSaleTotal > 0 ? 10 : 0 }]}>
         {log.length > 0 ? (
-          // Reverse the log to show most recent entries first
           [...log].reverse().map((entry, index) => (
             <View key={index} style={[styles.logEntry, { borderBottomColor: colors.logEntryBorder }]}>
               <Text style={[styles.logEntryText, { color: colors.logEntryText }]}>
@@ -1742,25 +1823,24 @@ const LogScreen = ({ log, showMainView, showFileManagementView, colors, lastComp
       <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={showFileManagementView}>
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Manage Log Files</Text>
       </TouchableOpacity>
-      {/* Adjusted style for this back button */}
       <TouchableOpacity style={[styles.backButton, styles.largeBackButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showMainView}>
         <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Main App'}</Text>
       </TouchableOpacity>
-      <View style={styles.bottomBuffer} /> {/* Buffer for soft buttons */}
+      <View style={styles.bottomBuffer} />
     </View>
   );
 };
 
 // --- Inventory Management Screen Component ---
 const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showMainView, menuData, colors }) => {
-  const [searchTerm, setSearchTerm] = useState(''); // State for search term in inventory
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleAdjustQuantity = (category, brand, item, adjustment) => {
     const itemData = inventory[category]?.[brand]?.[item];
     if (!itemData) return;
 
     const currentQuantity = itemData.quantity;
-    const newQuantity = currentQuantity + adjustment; // Allow negative for manual adjustments
+    const newQuantity = currentQuantity + adjustment;
     const quantityChange = adjustment;
     const lastChange = `${quantityChange > 0 ? '+' : ''}${quantityChange}`;
     const lastChangeDate = new Date().toLocaleString();
@@ -1771,7 +1851,7 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
       lastChange: lastChange,
       lastChangeDate: lastChangeDate
     });
-    addToLog("Adjusted Inventory", itemData.itemCode, category, brand, item, lastChange, newQuantity, itemData.price, 'No'); // Log price as well
+    addToLog("Adjusted Inventory", itemData.itemCode, category, brand, item, quantityChange, newQuantity, itemData.price, 'No');
   };
 
   const handleManualQuantityChange = (category, brand, item, text) => {
@@ -1779,7 +1859,7 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
     if (!itemData) return;
 
     const quantity = parseInt(text, 10);
-    if (!isNaN(quantity)) { // Allow negative for manual input
+    if (!isNaN(quantity)) {
       const currentQuantity = itemData.quantity;
       const quantityChange = quantity - currentQuantity;
       const lastChange = quantityChange !== 0 ? `${quantityChange > 0 ? '+' : ''}${quantityChange}` : 'N/A';
@@ -1791,10 +1871,8 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
         lastChange: lastChange,
         lastChangeDate: lastChangeDate
       });
-      addToLog("Manually Set Inventory", itemData.itemCode, category, brand, item, lastChange, quantity, itemData.price, 'No'); // Log price
+      addToLog("Manually Set Inventory", itemData.itemCode, category, brand, item, lastChange, quantity, itemData.price, 'No');
     } else if (text === '') {
-      // Allow clearing the input without immediately setting to 0
-      // The actual quantity will remain as is until a valid number is entered
     } else {
       Alert.alert("Invalid Input", "Please enter a valid number.");
     }
@@ -1816,27 +1894,23 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
         lastChange: lastChange,
         lastChangeDate: lastChangeDate
       });
-      addToLog("Price Updated", itemData.itemCode, category, brand, item, 'N/A', itemData.quantity, price, 'No'); // Log price update
+      addToLog("Price Updated", itemData.itemCode, category, brand, item, 'N/A', itemData.quantity, price, 'No');
     } else if (text === '') {
-      // Allow clearing the input without immediately setting to 0
     } else {
       Alert.alert("Invalid Input", "Please enter a valid positive number for the price.");
     }
   };
 
-  // Filtered and organized inventory for display
   const filteredAndOrganizedInventory = menuData.categories
     .map(categoryObj => {
-      // Exclude 'Clips, etc.' and 'Other' from inventory management display
       if (categoryObj.name === 'Clips, etc.' || categoryObj.name === 'Other') {
-        return { ...categoryObj, brands: [] }; // Return category with empty brands to exclude it
+        return { ...categoryObj, brands: [] };
       }
 
       const filteredBrands = categoryObj.brands
         .map(brandObj => {
           const filteredItems = brandObj.items
             .filter(itemObj => {
-              // Only show items that are actually in the inventory and not 'Clips, etc.' or 'Other'
               const itemData = inventory[categoryObj.name]?.[brandObj.name]?.[itemObj.name];
               return itemData && (
                 itemData.itemCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1846,12 +1920,10 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
             .map(itemObj => inventory[categoryObj.name][brandObj.name][itemObj.name]);
           return { ...brandObj, items: filteredItems };
         })
-        .filter(brandObj => brandObj.items.length > 0); // Only keep brands that have filtered items
+        .filter(brandObj => brandObj.items.length > 0);
       return { ...categoryObj, brands: filteredBrands };
     })
-    .filter(categoryObj => categoryObj.brands.length > 0); // Only keep categories that have filtered brands
-
-  // Removed separate handling for 'Other' custom items as they should not be displayed here.
+    .filter(categoryObj => categoryObj.brands.length > 0);
 
   return (
     <View style={styles.contentContainer}>
@@ -1886,7 +1958,6 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
                       )}
                     </View>
                     <View style={styles.inventoryControls}>
-                      {/* Quantity Controls */}
                       <TouchableOpacity style={[styles.inventoryButtonSmall, { backgroundColor: colors.buttonBgLight }]} onPress={() => handleAdjustQuantity(item.category, item.brand, item.item, -1)}>
                         <Text style={[styles.buttonText, { color: colors.text }]}>-</Text>
                       </TouchableOpacity>
@@ -1900,7 +1971,6 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
                         <Text style={[styles.buttonText, { color: colors.text }]}>+</Text>
                       </TouchableOpacity>
 
-                      {/* Price Controls */}
                       <Text style={[styles.priceLabel, { color: colors.text }]}>$</Text>
                       <TextInput
                         style={[styles.priceInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
@@ -1919,7 +1989,7 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
       <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={showMainView}>
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Back to Main App</Text>
       </TouchableOpacity>
-      <View style={styles.bottomBuffer} /> {/* Buffer for soft buttons */}
+      <View style={styles.bottomBuffer} />
     </View>
   );
 };
@@ -1935,12 +2005,11 @@ const FileManagementScreen = ({ showLogView, colors }) => {
 
   const listLogFiles = async () => {
     try {
-      await FileSystem.makeDirectoryAsync(LOG_DIRECTORY, { intermediates: true }); // Ensure directory exists
+      await FileSystem.makeDirectoryAsync(LOG_DIRECTORY, { intermediates: true });
       const files = await FileSystem.readDirectoryAsync(LOG_DIRECTORY);
-      // Filter for log files and sort by date (most recent first)
       const sortedFiles = files
-        .filter(file => file.startsWith('inventory_log_') && file.endsWith('.csv')) // Filter for .csv
-        .sort((a, b) => b.localeCompare(a)); // Reverse alphabetical for most recent first
+        .filter(file => file.startsWith('inventory_log_') && file.endsWith('.csv'))
+        .sort((a, b) => b.localeCompare(a));
       setLogFiles(sortedFiles);
     } catch (e) {
       console.error("Failed to list log files:", e);
@@ -1959,7 +2028,7 @@ const FileManagementScreen = ({ showLogView, colors }) => {
     }
   };
 
-  const shareFile = async (filePath) => { // Accepts full path
+  const shareFile = async (filePath) => {
     try {
       const fileInfo = await FileSystem.getInfoAsync(filePath);
       if (fileInfo.exists) {
@@ -1973,11 +2042,10 @@ const FileManagementScreen = ({ showLogView, colors }) => {
     }
   };
 
-  // Gets today's log file path for direct download button
-  const getTodayLogFilePathForDisplay = () => { // Renamed to avoid conflict with App's internal one
+  const getTodayLogFilePathForDisplay = () => {
     const date = new Date();
     const fileName = `inventory_log_${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}.csv`;
-    return LOG_DIRECTORY + fileName; // Return full path
+    return LOG_DIRECTORY + fileName;
   };
   const todayLogFilePath = getTodayLogFilePathForDisplay();
 
@@ -2054,7 +2122,7 @@ const FileManagementScreen = ({ showLogView, colors }) => {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.smallActionButton, { backgroundColor: colors.buttonBgTertiary }]}
-                  onPress={() => shareFile(LOG_DIRECTORY + fileName)} // Pass full path
+                  onPress={() => shareFile(LOG_DIRECTORY + fileName)}
                 >
                   <Text style={[styles.smallButtonText, { color: colors.headerText }]}>Share</Text>
                 </TouchableOpacity>
@@ -2081,7 +2149,7 @@ const FileManagementScreen = ({ showLogView, colors }) => {
       <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showLogView}>
         <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Activity Log'}</Text>
       </TouchableOpacity>
-      <View style={styles.bottomBuffer} /> {/* Buffer for soft buttons */}
+      <View style={styles.bottomBuffer} />
     </View>
   );
 };
@@ -2095,7 +2163,6 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
   const [newItemInput, setNewItemInput] = useState('');
   const [newItemPriceInput, setNewItemPriceInput] = useState(String(DEFAULT_ITEM_PRICE.toFixed(2)));
 
-  // Helper to get current categories and brands for display in dropdowns
   const availableCategories = menuData.categories.map(cat => cat.name);
   const availableBrandsForSelectedCategory = selectedCategoryForBrand
     ? menuData.categories.find(cat => cat.name === selectedCategoryForBrand)?.brands.map(brand => brand.name) || []
@@ -2130,7 +2197,6 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
             setMenuData(updatedMenuData);
             saveMenus(updatedMenuData);
 
-            // Also remove from inventory, but not for 'Clips, etc.' or 'Other'
             if (categoryName !== 'Clips, etc.' && categoryName !== 'Other') {
               setInventory(prevInventory => {
                 const newInventory = { ...prevInventory };
@@ -2140,7 +2206,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
               });
             }
             addToLog("Menu Changed", "N/A", categoryName, "N/A", "N/A", "Category Deleted", "N/A", "N/A", "No");
-            setSelectedCategoryForBrand(null); // Reset selection if deleted
+            setSelectedCategoryForBrand(null);
             setSelectedBrandForItems(null);
           }
         }
@@ -2185,7 +2251,6 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
             const updatedMenuData = { ...menuData };
             const category = updatedMenuData.categories.find(cat => cat.name === categoryName);
             if (category) {
-              // Prevent deleting the 'Fixed Prices' brand from 'Clips, etc.' or 'Custom' from 'Other'
               if ((categoryName === 'Clips, etc.' && brandName === 'Fixed Prices') || (categoryName === 'Other' && brandName === 'Custom')) {
                 Alert.alert("Cannot Delete", "This brand is essential and cannot be deleted.");
                 return;
@@ -2193,18 +2258,17 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
 
               const brand = category.brands.find(b => b.name === brandName);
               if (brand) {
-                category.brands = category.brands.filter(b => b.name !== brandName); // Filter out the brand
+                category.brands = category.brands.filter(b => b.name !== brandName);
                 setMenuData(updatedMenuData);
                 saveMenus(updatedMenuData);
 
-                // Also remove from inventory, but not for 'Clips, etc.' or 'Other'
                 if (categoryName !== 'Clips, etc.' && categoryName !== 'Other') {
                   setInventory(prevInventory => {
                     const newInventory = { ...prevInventory };
                     if (newInventory[categoryName]) {
                       delete newInventory[categoryName][brandName];
                       if (Object.keys(newInventory[categoryName]).length === 0) {
-                        delete newInventory[categoryName]; // Remove category if empty
+                        delete newInventory[categoryName];
                       }
                     }
                     saveInventory(newInventory);
@@ -2212,7 +2276,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
                   });
                 }
                 addToLog("Menu Changed", "N/A", categoryName, brandName, "N/A", "Brand Deleted", "N/A", "N/A", "No");
-                setSelectedBrandForItems(null); // Reset selection if deleted
+                setSelectedBrandForItems(null);
               }
             }
           }
@@ -2236,7 +2300,6 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
       return;
     }
 
-    // Prevent adding items to 'Clips, etc.' or 'Other' category via this menu
     if (selectedCategoryForBrand === 'Clips, etc.' || selectedCategoryForBrand === 'Other') {
       Alert.alert("Cannot Add Item", "Items in 'Clips, etc.' and 'Other' categories are fixed or managed via custom input on the main screen and cannot be added manually here.");
       setNewItemInput('');
@@ -2251,13 +2314,11 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
       const brandIndex = category.brands.findIndex(brand => brand.name === selectedBrandForItems);
       if (brandIndex !== -1) {
         const brand = category.brands[brandIndex];
-        // Check if an item with the same name already exists
         if (!brand.items.some(itemObj => itemObj.name === newItemInput.trim())) {
-          brand.items.push({ name: newItemInput.trim(), price: itemPrice }); // Add item as an object with price
+          brand.items.push({ name: newItemInput.trim(), price: itemPrice });
           setMenuData(updatedMenuData);
           saveMenus(updatedMenuData);
 
-          // Initialize new item in inventory, but not for 'Clips, etc.' or 'Other'
           if (selectedCategoryForBrand !== 'Clips, etc.' && selectedCategoryForBrand !== 'Other') {
             setInventory(prevInventory => {
               const newInventory = { ...prevInventory };
@@ -2280,7 +2341,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
 
           addToLog("Menu Changed", "N/A", selectedCategoryForBrand, selectedBrandForItems, newItemInput.trim(), "Item Added", "N/A", itemPrice, "No");
           setNewItemInput('');
-          setNewItemPriceInput(String(DEFAULT_ITEM_PRICE.toFixed(2))); // Reset price input
+          setNewItemPriceInput(String(DEFAULT_ITEM_PRICE.toFixed(2)));
         } else {
           Alert.alert("Invalid Input", "Item already exists in this brand.");
         }
@@ -2302,7 +2363,6 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
             if (category) {
               const brand = category.brands.find(b => b.name === brandName);
               if (brand) {
-                // Prevent deleting fixed price items from 'Clips, etc.' or 'Custom' from 'Other'
                 if ((categoryName === 'Clips, etc.' && brandName === 'Fixed Prices') || (categoryName === 'Other' && brandName === 'Custom')) {
                   Alert.alert("Cannot Delete", "This item is essential and cannot be deleted manually.");
                   return;
@@ -2312,16 +2372,15 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
                 setMenuData(updatedMenuData);
                 saveMenus(updatedMenuData);
 
-                // Also remove from inventory, but not for 'Clips, etc.' or 'Other'
                 if (categoryName !== 'Clips, etc.' && categoryName !== 'Other') {
                   setInventory(prevInventory => {
                     const newInventory = { ...prevInventory };
                     if (newInventory[categoryName]?.[brandName]?.[itemName]) {
                       delete newInventory[categoryName][brandName][itemName];
                       if (Object.keys(newInventory[categoryName][brandName]).length === 0) {
-                        delete newInventory[categoryName][brandName]; // Remove brand if empty
+                        delete newInventory[categoryName][brandName];
                         if (Object.keys(newInventory[categoryName]).length === 0) {
-                          delete newInventory[categoryName]; // Remove category if empty
+                          delete newInventory[categoryName];
                         }
                       }
                     }
@@ -2349,7 +2408,6 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         </View>
       )}
 
-      {/* Manage Categories Section */}
       <Text style={[styles.subtitle, { color: colors.text }]}>Manage Categories</Text>
       <View style={[styles.currentListDisplay, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
         <Text style={[styles.currentListText, { color: colors.text }]}>Current Categories:</Text>
@@ -2358,7 +2416,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
             availableCategories.map(cat => (
               <View key={cat} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
                 <Text style={[styles.listItemText, { color: colors.text }]}>{cat}</Text>
-                {isEditModeEnabled && cat !== 'Other' && cat !== 'Clips, etc.' && ( // Do not allow deleting 'Other' or 'Clips, etc.'
+                {isEditModeEnabled && cat !== 'Other' && cat !== 'Clips, etc.' && (
                   <TouchableOpacity onPress={() => handleDeleteCategory(cat)} style={[styles.deleteButton, { backgroundColor: colors.buttonBgDanger }]}>
                     <MaterialIcons name="delete" size={20} color={colors.headerText} />
                   </TouchableOpacity>
@@ -2385,7 +2443,6 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         </>
       )}
 
-      {/* Manage Brands Section */}
       <Text style={[styles.subtitle, { color: colors.text }]}>Manage Brands</Text>
       <View style={styles.pickerContainer}>
         <Text style={[styles.pickerLabel, { color: colors.text }]}>Select Category for Brand:</Text>
@@ -2396,7 +2453,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
               style={[styles.pickerButton, { backgroundColor: colors.pickerBg }, selectedCategoryForBrand === cat && { backgroundColor: colors.pickerSelectedBg }]}
               onPress={() => {
                 setSelectedCategoryForBrand(cat);
-                setSelectedBrandForItems(null); // Reset brand selection when category changes
+                setSelectedBrandForItems(null);
               }}>
               <Text style={[styles.pickerButtonText, { color: colors.pickerText }, selectedCategoryForBrand === cat && { color: colors.pickerSelectedText }]}>{cat}</Text>
             </TouchableOpacity>
@@ -2410,7 +2467,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
             {menuData.categories.find(c => c.name === selectedCategoryForBrand)?.brands.map(brandObj => (
               <View key={brandObj.name} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
                 <Text style={[styles.listItemText, { color: colors.text }]}>{brandObj.name}</Text>
-                {isEditModeEnabled && !(selectedCategoryForBrand === 'Clips, etc.' && brandObj.name === 'Fixed Prices') && !(selectedCategoryForBrand === 'Other' && brandObj.name === 'Custom') && ( // Do not allow deleting 'Fixed Prices' brand from 'Clips, etc.' or 'Custom' from 'Other'
+                {isEditModeEnabled && !(selectedCategoryForBrand === 'Clips, etc.' && brandObj.name === 'Fixed Prices') && !(selectedCategoryForBrand === 'Other' && brandObj.name === 'Custom') && (
                   <TouchableOpacity onPress={() => handleDeleteBrand(selectedCategoryForBrand, brandObj.name)} style={[styles.deleteButton, { backgroundColor: colors.buttonBgDanger }]}>
                     <MaterialIcons name="delete" size={20} color={colors.headerText} />
                   </TouchableOpacity>
@@ -2435,7 +2492,6 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         </>
       )}
 
-      {/* Manage Items Section */}
       <Text style={[styles.subtitle, { color: colors.text }]}>Manage Items</Text>
       <View style={styles.pickerContainer}>
         <Text style={[styles.pickerLabel, { color: colors.text }]}>Select Brand for Items:</Text>
@@ -2458,7 +2514,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
               menuData.categories.find(c => c.name === selectedCategoryForBrand)?.brands.find(b => b.name === selectedBrandForItems)?.items.map(itemObj => (
                 <View key={itemObj.name} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
                   <Text style={[styles.listItemText, { color: colors.text }]}>{itemObj.name} (${itemObj.price.toFixed(2)})</Text>
-                  {isEditModeEnabled && !(selectedCategoryForBrand === 'Clips, etc.' && selectedBrandForItems === 'Fixed Prices') && !(selectedCategoryForBrand === 'Other' && selectedBrandForItems === 'Custom') && ( // Do not allow deleting fixed price items or custom 'Other' items
+                  {isEditModeEnabled && !(selectedCategoryForBrand === 'Clips, etc.' && selectedBrandForItems === 'Fixed Prices') && !(selectedCategoryForBrand === 'Other' && selectedBrandForItems === 'Custom') && (
                     <TouchableOpacity onPress={() => handleDeleteItem(selectedCategoryForBrand, selectedBrandForItems, itemObj.name)} style={[styles.deleteButton, { backgroundColor: colors.buttonBgDanger }]}>
                       <MaterialIcons name="delete" size={20} color={colors.headerText} />
                     </TouchableOpacity>
@@ -2503,22 +2559,28 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
 };
 
 // --- Development Screen Component ---
-const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashierNumber, colorScheme, setColorScheme, saveColorScheme, showMenuManagementView, populateExampleItems, exportConfig, importConfig, colors }) => {
+const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashierNumber, colorScheme, setColorScheme, saveColorScheme, showMenuManagementView, populateExampleItems, exportConfig, importConfig, isEditModeEnabled, colors }) => {
   const handleSetCashierNumber = () => {
     Alert.alert("Set Cashier Number", `Cashier number set to: ${cashierNumber}`);
   };
 
   const handleSetColorScheme = (scheme) => {
     setColorScheme(scheme);
-    saveColorScheme(scheme); // Save the new scheme to file
-    Alert.alert("Color Scheme", `Color scheme set to "${scheme}".`);
+    saveColorScheme(scheme);
   };
 
   return (
     <ScrollView style={styles.contentContainer}>
       <Text style={[styles.title, { color: colors.text }]}>Development Tools</Text>
 
-      {/* Color Scheme Section */}
+      {!isEditModeEnabled && (
+        <View style={[styles.editModeWarning, { backgroundColor: colors.warningBg, borderColor: colors.warningBorder }]}>
+          <Text style={[styles.editModeWarningText, { color: colors.warningText }]}>
+            Edit mode is currently disabled. Tap the <MaterialIcons name="lock" size={16} color={colors.warningText} /> icon in the top-left to enable editing to use these features.
+          </Text>
+        </View>
+      )}
+
       <Text style={[styles.subtitle, { color: colors.text }]}>Color Scheme</Text>
       <View style={styles.buttonGrid}>
         <TouchableOpacity
@@ -2539,9 +2601,17 @@ const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashi
           onPress={() => handleSetColorScheme('dark')}>
           <Text style={[styles.buttonText, { color: colors.text }, colorScheme === 'dark' && { color: colors.pickerSelectedText }]}>Dark Mode</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.button,
+            { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor },
+            colorScheme === 'pastel' && { backgroundColor: colors.pickerSelectedBg }
+          ]}
+          onPress={() => handleSetColorScheme('pastel')}>
+          <Text style={[styles.buttonText, { color: colors.text }, colorScheme === 'pastel' && { color: colors.pickerSelectedText }]}>Pastel Mode</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Cashier Number Section */}
       <Text style={[styles.subtitle, { color: colors.text }]}>Set Cashier Number</Text>
       <TextInput
         style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
@@ -2555,29 +2625,40 @@ const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashi
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Set Cashier: {cashierNumber}</Text>
       </TouchableOpacity>
 
-      {/* Menu Management Link */}
       <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, marginTop: 20 }]} onPress={showMenuManagementView}>
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Go to Menu Management</Text>
       </TouchableOpacity>
 
-      {/* Populate Example Items Button */}
-      <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary, marginTop: 10 }]} onPress={populateExampleItems}>
+      <TouchableOpacity
+        style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary, marginTop: 10, opacity: isEditModeEnabled ? 1 : 0.5 }]}
+        onPress={isEditModeEnabled ? populateExampleItems : null}
+        disabled={!isEditModeEnabled}
+      >
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Populate Example Items</Text>
       </TouchableOpacity>
 
-      {/* Config Import/Export Section */}
       <Text style={[styles.subtitle, { color: colors.text }]}>Config Import/Export</Text>
-      <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, marginTop: 10 }]} onPress={exportConfig}>
+      <TouchableOpacity
+        style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, marginTop: 10, opacity: isEditModeEnabled ? 1 : 0.5 }]}
+        onPress={isEditModeEnabled ? exportConfig : null}
+        disabled={!isEditModeEnabled}
+      >
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Export Config JSON</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgSecondary, marginTop: 10 }]} onPress={importConfig}>
+      <TouchableOpacity
+        style={[styles.actionButton, { backgroundColor: colors.buttonBgSecondary, marginTop: 10, opacity: isEditModeEnabled ? 1 : 0.5 }]}
+        onPress={isEditModeEnabled ? importConfig : null}
+        disabled={!isEditModeEnabled}
+      >
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Import Config JSON</Text>
       </TouchableOpacity>
 
-
-      {/* Reset Data Button */}
       <View style={[styles.resetSection, { borderTopColor: colors.logEntryBorder }]}>
-        <TouchableOpacity style={[styles.resetButton, { backgroundColor: colors.buttonBgDanger }]} onPress={resetAppData}>
+        <TouchableOpacity
+          style={[styles.resetButton, { backgroundColor: colors.buttonBgDanger, opacity: isEditModeEnabled ? 1 : 0.5 }]}
+          onPress={isEditModeEnabled ? resetAppData : null}
+          disabled={!isEditModeEnabled}
+        >
           <Text style={[styles.buttonText, { color: colors.headerText }]}>Reset All App Data</Text>
         </TouchableOpacity>
         <Text style={[styles.resetWarningText, { color: colors.warningText }]}>
@@ -2593,81 +2674,266 @@ const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashi
   );
 };
 
+// --- Layaway Management Screen Component ---
+const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, inventory, setInventory, saveInventory, addToLog, showMainView, colors }) => {
+  const [paymentInputs, setPaymentInputs] = useState({});
+
+  useEffect(() => {
+    const initialInputs = {};
+    layawayItems.forEach(item => {
+      initialInputs[item.layawayId] = '';
+    });
+    setPaymentInputs(initialInputs);
+  }, [layawayItems]);
+
+  const handlePaymentInputChange = (layawayId, text) => {
+    setPaymentInputs(prev => ({ ...prev, [layawayId]: text }));
+  };
+
+  const handleApplyPayment = (layawayItem) => {
+    const paymentAmount = parseFloat(paymentInputs[layawayItem.layawayId]);
+
+    if (isNaN(paymentAmount) || paymentAmount <= 0) {
+      Alert.alert("Invalid Amount", "Please enter a valid positive number for the payment.");
+      return;
+    }
+    if (paymentAmount > layawayItem.remainingBalance) {
+      Alert.alert("Payment Exceeds Balance", `Payment amount $${paymentAmount.toFixed(2)} exceeds remaining balance $${layawayItem.remainingBalance.toFixed(2)}. Please enter a valid amount.`);
+      return;
+    }
+
+    const updatedLayawayItems = layawayItems.map(item => {
+      if (item.layawayId === layawayItem.layawayId) {
+        const newAmountPaid = item.amountPaid + paymentAmount;
+        const newRemainingBalance = item.originalPrice - newAmountPaid;
+        return {
+          ...item,
+          amountPaid: newAmountPaid,
+          remainingBalance: newRemainingBalance,
+        };
+      }
+      return item;
+    });
+
+    setLayawayItems(updatedLayawayItems);
+    saveLayaway(updatedLayawayItems);
+    addToLog("Layaway Payment", layawayItem.itemCode, layawayItem.category, layawayItem.brand, layawayItem.item, `+${paymentAmount.toFixed(2)}`, layawayItem.remainingBalance - paymentAmount, paymentAmount, 'Layaway Payment');
+    setPaymentInputs(prev => ({ ...prev, [layawayItem.layawayId]: '' }));
+    Alert.alert("Payment Applied", `Successfully applied $${paymentAmount.toFixed(2)} to ${layawayItem.item}.`);
+  };
+
+  const handleCompleteLayaway = (layawayItem) => {
+    if (layawayItem.remainingBalance > 0) {
+      Alert.alert("Outstanding Balance", `There is still a remaining balance of $${layawayItem.remainingBalance.toFixed(2)}. Please apply full payment before completing.`);
+      return;
+    }
+
+    Alert.alert(
+      "Complete Layaway",
+      `Mark "${layawayItem.item}" as fully paid and remove from layaway?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Confirm",
+          onPress: () => {
+            const updatedLayawayItems = layawayItems.filter(item => item.layawayId !== layawayItem.layawayId);
+            setLayawayItems(updatedLayawayItems);
+            saveLayaway(updatedLayawayItems);
+            addToLog("Layaway Completed", layawayItem.itemCode, layawayItem.category, layawayItem.brand, layawayItem.item, 'N/A', 'N/A', layawayItem.originalPrice, 'Layaway Paid Off');
+            Alert.alert("Layaway Completed", `${layawayItem.item} has been marked as paid off.`);
+          }
+        }
+      ]
+    );
+  };
+
+  const handleCancelLayaway = (layawayItem) => {
+    Alert.alert(
+      "Cancel Layaway",
+      `Are you sure you want to cancel layaway for "${layawayItem.item}"? This will return the item to inventory.`,
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Yes, Cancel",
+          onPress: () => {
+            const updatedLayawayItems = layawayItems.filter(item => item.layawayId !== layawayItem.layawayId);
+            setLayawayItems(updatedLayawayItems);
+            saveLayaway(updatedLayawayItems);
+
+            if (layawayItem.isInventoryTracked) {
+              setInventory(prevInventory => {
+                const newInventory = { ...prevInventory };
+                const category = layawayItem.category;
+                const brand = layawayItem.brand;
+                const item = layawayItem.item;
+
+                if (!newInventory[category]) newInventory[category] = {};
+                if (!newInventory[category][brand]) newInventory[category][brand] = {};
+
+                const existingItem = newInventory[category][brand][item];
+                if (existingItem) {
+                  const newQuantity = existingItem.quantity + 1;
+                  newInventory[category][brand][item] = {
+                    ...existingItem,
+                    quantity: newQuantity,
+                    lastChange: 'Layaway Cancelled (+1)',
+                    lastChangeDate: new Date().toLocaleString()
+                  };
+                  addToLog("Layaway Cancelled (Returned to Stock)", layawayItem.itemCode, category, brand, item, '+1', newQuantity, 'N/A', 'Layaway Cancelled');
+                } else {
+                  newInventory[category][brand][item] = {
+                    itemCode: layawayItem.itemCode,
+                    category: category,
+                    brand: brand,
+                    item: item,
+                    quantity: 1,
+                    price: layawayItem.originalPrice,
+                    lastChange: 'Layaway Cancelled (Re-added)',
+                    lastChangeDate: new Date().toLocaleString()
+                  };
+                  addToLog("Layaway Cancelled (Re-added to Stock)", layawayItem.itemCode, category, brand, item, '+1', 1, 'N/A', 'Layaway Cancelled');
+                }
+                saveInventory(newInventory);
+                return newInventory;
+              });
+            } else {
+              addToLog("Layaway Cancelled (Not Inventory Tracked)", layawayItem.itemCode, layawayItem.category, layawayItem.brand, layawayItem.item, 'N/A', 'N/A', 'N/A', 'Layaway Cancelled');
+            }
+            Alert.alert("Layaway Cancelled", `${layawayItem.item} has been removed from layaway and returned to inventory.`);
+          }
+        }
+      ]
+    );
+  };
+
+  return (
+    <View style={styles.contentContainer}>
+      <Text style={[styles.title, { color: colors.text }]}>Layaway Management</Text>
+      <ScrollView style={[styles.layawayListContainer, { backgroundColor: colors.cardBg }]}>
+        {layawayItems.length === 0 ? (
+          <Text style={[styles.logEntryText, { color: colors.text }]}>No items currently on layaway.</Text>
+        ) : (
+          layawayItems.map(item => (
+            <View key={item.layawayId} style={[styles.layawayItemCard, { borderBottomColor: colors.logEntryBorder }]}>
+              <Text style={[styles.layawayItemText, { color: colors.text }]}>
+                {item.item} ({item.category} > {item.brand})
+              </Text>
+              <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Code: {item.itemCode}</Text>
+              <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Original Price: ${item.originalPrice.toFixed(2)}</Text>
+              <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Amount Paid: ${item.amountPaid.toFixed(2)}</Text>
+              <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Remaining Balance: ${item.remainingBalance.toFixed(2)}</Text>
+              <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Layaway Date: {item.layawayDate}</Text>
+
+              <View style={styles.layawayPaymentControls}>
+                <TextInput
+                  style={[styles.layawayPaymentInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                  placeholder="Payment Amount ($)"
+                  placeholderTextColor={colors.logDetails}
+                  keyboardType="numeric"
+                  value={paymentInputs[item.layawayId]}
+                  onChangeText={(text) => handlePaymentInputChange(item.layawayId, text)}
+                />
+                <TouchableOpacity
+                  style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgPrimary }]}
+                  onPress={() => handleApplyPayment(item)}
+                >
+                  <Text style={[styles.buttonText, { color: colors.headerText }]}>Apply Payment</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.layawayActionButtons}>
+                <TouchableOpacity
+                  style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgSecondary }]}
+                  onPress={() => handleCompleteLayaway(item)}
+                  disabled={item.remainingBalance > 0}
+                >
+                  <Text style={[styles.buttonText, { color: colors.headerText }]}>Complete Layaway</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgDanger }]}
+                  onPress={() => handleCancelLayaway(item)}
+                >
+                  <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel Layaway</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
+      <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={showMainView}>
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>Back to Main App</Text>
+      </TouchableOpacity>
+      <View style={styles.bottomBuffer} />
+    </View>
+  );
+};
+
 
 // --- Styles ---
-// This is where all the styling for the components is defined.
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // Background color is dynamic
-    paddingBottom: Platform.OS === 'ios' ? 25 : 25, // Increased padding for iOS and Android
-    paddingTop: Platform.OS === 'android' ? 30 : 0, // Added padding for Android status bar/camera hole
+    paddingBottom: Platform.OS === 'ios' ? 25 : 25,
+    paddingTop: Platform.OS === 'android' ? 30 : 0,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f0f2f5', // Stays light for loading
+    backgroundColor: '#f0f2f5',
   },
   loadingText: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333', // Stays dark for loading
+    color: '#333',
   },
   header: {
     padding: 20,
-    // Background color is dynamic
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row', // To place dev button
+    flexDirection: 'row',
     position: 'relative',
   },
   headerText: {
     fontSize: 24,
     fontWeight: 'bold',
-    // Color is dynamic
   },
   devButton: {
     position: 'absolute',
     right: 15,
     top: 20,
-    // Background color is dynamic
     paddingVertical: 5,
     paddingHorizontal: 10,
     borderRadius: 5,
   },
   devButtonText: {
-    // Color is dynamic
     fontSize: 14,
     fontWeight: 'bold',
   },
-  editModeButton: { // Style for edit mode toggle
+  editModeButton: {
     position: 'absolute',
     left: 15,
     top: 20,
-    backgroundColor: 'rgba(0,0,0,0.2)', // Stays semi-transparent black
+    backgroundColor: 'rgba(0,0,0,0.2)',
     padding: 8,
     borderRadius: 5,
   },
   contentContainer: {
     flex: 1,
     padding: 20,
-    // Removed paddingBottom here as it is handled by the main container and bottomBuffer
   },
   selectionScrollView: {
-    flex: 1, // Ensure scroll view takes available space
+    flex: 1,
   },
   title: {
     fontSize: 22,
     fontWeight: '600',
-    // Color is dynamic
     marginBottom: 20,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 18,
     fontWeight: '500',
-    // Color is dynamic
     marginTop: 20,
     marginBottom: 10,
   },
@@ -2677,87 +2943,70 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   button: {
-    // Background color is dynamic
     paddingVertical: 15,
     paddingHorizontal: 10,
     borderRadius: 10,
-    width: '48%', // Two buttons per row with a small gap
+    width: '48%',
     alignItems: 'center',
     marginBottom: 15,
-    // Shadow color is dynamic
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
   buttonText: {
-    // Color is dynamic
     fontSize: 16,
     fontWeight: '500',
   },
-  itemCodeSmall: { // Style for unique item code on main screen buttons
+  itemCodeSmall: {
     fontSize: 10,
-    // Color is dynamic
     marginTop: 5,
   },
   input: {
-    // Background color is dynamic
     padding: 15,
     borderRadius: 10,
     fontSize: 16,
     marginBottom: 20,
     borderWidth: 1,
-    // Border color is dynamic
-    // Text color is dynamic
   },
-  searchInput: { // Style for search input
-    // Background color is dynamic
+  searchInput: {
     padding: 15,
     borderRadius: 10,
     fontSize: 16,
     marginBottom: 20,
     borderWidth: 1,
-    // Border color is dynamic
-    // Text color is dynamic
   },
   actionButton: {
-    // Background color is dynamic
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
     marginBottom: 10,
   },
   downloadInventoryButton: {
-    // Background color is dynamic (overridden in component)
   },
   backButton: {
-    padding: 15, // Increased padding for larger touch target
+    padding: 15,
     alignItems: 'center',
-    marginTop: 20, // Increased margin from other elements
-    // Background color is dynamic
+    marginTop: 20,
     borderRadius: 10,
   },
-  largeBackButton: { // Specific style for the LogScreen's back button
+  largeBackButton: {
     paddingVertical: 15,
     paddingHorizontal: 25,
-    minWidth: '80%', // Make it wider
+    minWidth: '80%',
   },
   backButtonText: {
-    // Color is dynamic
-    fontSize: 18, // Larger text
+    fontSize: 18,
     fontWeight: 'bold',
   },
   footer: {
     borderTopWidth: 1,
-    // Border top color is dynamic
     paddingTop: 10,
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingBottom: Platform.OS === 'ios' ? 20 : 10, // Added padding for iOS home indicator, adjusted for Android
-    // Background color is dynamic
+    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
   },
   logButton: {
-    // Background color is dynamic
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
@@ -2765,36 +3014,43 @@ const styles = StyleSheet.create({
     marginRight: 5,
   },
   inventoryButton: {
-    // Background color is dynamic
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    flex: 1,
+    marginLeft: 5,
+    marginRight: 5,
+  },
+  layawayButton: {
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
     flex: 1,
     marginLeft: 5,
   },
-  saleActionsContainer: { // Container for sale-related buttons
+  saleActionsContainer: {
     flex: 1,
     flexDirection: 'column',
     alignItems: 'stretch',
   },
-  endSaleButton: { // Style for the Complete Sale button
+  endSaleButton: {
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
-    marginBottom: 10, // Space below complete sale button
+    marginBottom: 10,
   },
-  editCancelButtons: { // Container for Edit and Cancel buttons
+  editCancelButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  undoLastItemButton: { // Style for the new "Undo Last Item" button
+  undoLastItemButton: {
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
     flex: 1,
     marginRight: 5,
   },
-  cancelSaleButton: { // Style for the Cancel Sale button
+  cancelSaleButton: {
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
@@ -2803,7 +3059,6 @@ const styles = StyleSheet.create({
   },
   logContainer: {
     flex: 1,
-    // Background color is dynamic
     borderRadius: 10,
     padding: 15,
     marginBottom: 20,
@@ -2811,44 +3066,36 @@ const styles = StyleSheet.create({
   logEntry: {
     paddingVertical: 8,
     borderBottomWidth: 1,
-    // Border bottom color is dynamic
     marginBottom: 5,
   },
   logEntryText: {
     fontSize: 14,
-    // Color is dynamic
   },
   logEntryTimestamp: {
     fontWeight: 'bold',
-    // Color is dynamic
   },
   logEntryAction: {
     fontStyle: 'italic',
-    // Color is dynamic
   },
   logEntryDetails: {
     fontSize: 12,
-    // Color is dynamic
-    marginLeft: 10, // Indent details
+    marginLeft: 10,
   },
-  // Inventory Specific Styles
   inventoryListContainer: {
     flex: 1,
-    // Background color is dynamic
     borderRadius: 10,
     padding: 15,
     marginBottom: 20,
   },
-  categoryHeader: { // Style for category headers in inventory
+  categoryHeader: {
     fontSize: 18,
     fontWeight: 'bold',
     marginTop: 15,
     marginBottom: 10,
     paddingBottom: 5,
     borderBottomWidth: 1,
-    // Border bottom color is dynamic
   },
-  brandHeader: { // Style for brand headers in inventory
+  brandHeader: {
     fontSize: 16,
     fontWeight: '600',
     marginTop: 10,
@@ -2856,39 +3103,34 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   inventoryItem: {
-    flexDirection: 'column', // Changed to column to give space
+    flexDirection: 'column',
     justifyContent: 'space-between',
-    alignItems: 'flex-start', // Align details to start
+    alignItems: 'flex-start',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    // Border bottom color is dynamic
   },
   inventoryItemDetails: {
-    width: '100%', // Take full width
-    marginBottom: 10, // Space between details and controls
+    width: '100%',
+    marginBottom: 10,
   },
   inventoryItemText: {
     fontSize: 16,
     fontWeight: '500',
-    // Color is dynamic
   },
   inventoryItemCode: {
     fontSize: 12,
-    // Color is dynamic
   },
   inventoryLastChange: {
     fontSize: 10,
-    // Color is dynamic
     fontStyle: 'italic',
   },
   inventoryControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start', // Align controls to start
-    width: '100%', // Take full width
+    justifyContent: 'flex-start',
+    width: '100%',
   },
   inventoryButtonSmall: {
-    // Background color is dynamic
     paddingVertical: 5,
     paddingHorizontal: 10,
     borderRadius: 5,
@@ -2897,7 +3139,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   inventoryInput: {
-    // Background color is dynamic
     paddingVertical: 5,
     paddingHorizontal: 8,
     borderRadius: 5,
@@ -2905,17 +3146,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
     borderWidth: 1,
-    // Border color is dynamic
-    // Text color is dynamic
   },
   priceLabel: {
     fontSize: 16,
-    // Color is dynamic
     marginLeft: 10,
     marginRight: 2,
   },
   priceInput: {
-    // Background color is dynamic
     paddingVertical: 5,
     paddingHorizontal: 8,
     borderRadius: 5,
@@ -2923,10 +3160,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
     borderWidth: 1,
-    // Border color is dynamic
-    // Text color is dynamic
   },
-  sellButton: { // This style is unused
+  sellButton: {
     backgroundColor: '#e74c3c',
     paddingVertical: 5,
     paddingHorizontal: 10,
@@ -2934,10 +3169,8 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     alignItems: 'center',
   },
-  // File Management Specific Styles
   fileListContainer: {
     flex: 1,
-    // Background color is dynamic
     borderRadius: 10,
     padding: 15,
     marginBottom: 20,
@@ -2948,25 +3181,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    // Border bottom color is dynamic
   },
   fileItemText: {
     fontSize: 14,
-    // Color is dynamic
     flex: 1,
   },
   fileItemActions: {
     flexDirection: 'row',
   },
   smallActionButton: {
-    // Background color is dynamic
     paddingVertical: 5,
     paddingHorizontal: 10,
     borderRadius: 5,
     marginLeft: 5,
   },
   smallButtonText: {
-    // Color is dynamic
     fontSize: 12,
   },
   fileContentModal: {
@@ -2975,7 +3204,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    // Background color is dynamic
     padding: 20,
     justifyContent: 'center',
     alignItems: 'center',
@@ -2985,11 +3213,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 10,
-    // Color is dynamic
   },
   fileContentScroll: {
     flex: 1,
-    // Background color is dynamic
     borderRadius: 10,
     padding: 15,
     width: '100%',
@@ -2997,11 +3223,8 @@ const styles = StyleSheet.create({
   },
   fileContentText: {
     fontSize: 14,
-    // Color is dynamic
   },
-  // Development Screen Styles
   resetButton: {
-    // Background color is dynamic
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
@@ -3009,25 +3232,22 @@ const styles = StyleSheet.create({
   },
   resetWarningText: {
     fontSize: 14,
-    // Color is dynamic
     textAlign: 'center',
     marginBottom: 20,
   },
-  resetSection: { // Style for reset button section
+  resetSection: {
     marginTop: 30,
     borderTopWidth: 1,
-    // Border top color is dynamic
     paddingTop: 20,
     alignItems: 'center',
   },
-  currentListText: { // For displaying current categories/brands in dev screen
+  currentListText: {
     fontSize: 14,
-    // Color is dynamic
     marginBottom: 10,
     textAlign: 'center',
   },
-  bottomBuffer: { // Buffer for soft buttons
-    height: Platform.OS === 'ios' ? 30 : 30, // Increased height
+  bottomBuffer: {
+    height: Platform.OS === 'ios' ? 30 : 30,
   },
   pickerContainer: {
     marginBottom: 20,
@@ -3035,7 +3255,6 @@ const styles = StyleSheet.create({
   pickerLabel: {
     fontSize: 16,
     fontWeight: '500',
-    // Color is dynamic
     marginBottom: 10,
   },
   horizontalPicker: {
@@ -3044,45 +3263,35 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   pickerButton: {
-    // Background color is dynamic
     paddingVertical: 10,
     paddingHorizontal: 15,
     borderRadius: 8,
     marginRight: 10,
   },
   pickerButtonSelected: {
-    // Background color is dynamic (overridden in component)
   },
   pickerButtonText: {
-    // Color is dynamic
     fontSize: 14,
   },
   pickerButtonTextSelected: {
-    // Color is dynamic (overridden in component)
     fontWeight: 'bold',
   },
-  // Styles for Menu Management Screen
   editModeWarning: {
-    // Background color is dynamic
     padding: 10,
     borderRadius: 8,
     borderWidth: 1,
-    // Border color is dynamic
     marginBottom: 20,
     alignItems: 'center',
   },
   editModeWarningText: {
-    // Color is dynamic
     fontSize: 14,
     textAlign: 'center',
   },
   currentListDisplay: {
-    // Background color is dynamic
     borderRadius: 10,
     padding: 15,
     marginBottom: 20,
     borderWidth: 1,
-    // Border color is dynamic
   },
   listItemsContainer: {
     marginTop: 10,
@@ -3093,23 +3302,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    // Border bottom color is dynamic
   },
   listItemText: {
     fontSize: 15,
-    // Color is dynamic
     flex: 1,
   },
   deleteButton: {
-    // Background color is dynamic
     padding: 5,
     borderRadius: 5,
   },
-  inputLabel: { // Style for input labels
+  inputLabel: {
     fontSize: 16,
     fontWeight: '500',
     marginBottom: 5,
-    // Color is dynamic
   },
   currentSaleItemsContainer: {
     borderTopWidth: 1,
@@ -3126,7 +3331,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   currentSaleItemsScroll: {
-    maxHeight: 150, // Limit height to make it scrollable
+    maxHeight: 150,
   },
   currentSaleItem: {
     flexDirection: 'row',
@@ -3144,13 +3349,13 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     marginLeft: 10,
   },
-  centeredView: { // Styles for modal positioning
+  centeredView: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)', // Semi-transparent background
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  modalView: { // Styles for modal content
+  modalView: {
     margin: 20,
     borderRadius: 20,
     padding: 35,
@@ -3163,25 +3368,122 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
-    width: '90%', // Take up most of the width
-    maxHeight: '80%', // Limit height
+    width: '90%',
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalButtonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    width: '100%', // Ensure it takes full width of modal
+  },
+  modalButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    width: '48%', // Two buttons per row
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  modalInput: {
+    width: '100%',
+    padding: 12,
+    borderRadius: 10,
+    fontSize: 16,
+    marginBottom: 15,
+    borderWidth: 1,
+  },
+  modalActionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 20,
+  },
+  modalActionButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 5,
   },
   currentSaleTotalText: {
     fontSize: 18,
     fontWeight: 'bold',
     marginTop: 15,
   },
-  mostRecentSaleContainer: { // New style for the most recent sale display
+  mostRecentSaleContainer: {
     padding: 10,
     borderRadius: 8,
     borderWidth: 1,
     marginBottom: 20,
     alignItems: 'center',
   },
-  mostRecentSaleText: { // New style for the text within the most recent sale display
+  mostRecentSaleText: {
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  layawayListContainer: {
+    flex: 1,
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 20,
+  },
+  layawayItemCard: {
+    padding: 15,
+    marginBottom: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  layawayItemText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  layawayDetailsText: {
+    fontSize: 13,
+    marginBottom: 3,
+  },
+  layawayPaymentControls: {
+    flexDirection: 'row',
+    marginTop: 10,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  layawayPaymentInput: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginRight: 10,
+    fontSize: 15,
+  },
+  layawayActionButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    marginHorizontal: 5,
+  },
+  layawayActionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
   },
 });
 
