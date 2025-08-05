@@ -385,10 +385,19 @@ const App = () => {
 
   const saveInventory = async (currentInventory) => {
     try {
-      await FileSystem.writeAsStringAsync(INVENTORY_FILE, JSON.stringify(currentInventory, null, 2));
+      // Explicitly try-catch JSON.stringify to catch serialization errors
+      let jsonContent;
+      try {
+        jsonContent = JSON.stringify(currentInventory, null, 2);
+      } catch (jsonError) {
+        console.error("Failed to stringify inventory JSON:", jsonError);
+        Alert.alert("Error", "Failed to prepare inventory data for saving due to data format issue. Please check console for details.");
+        return; // Stop execution if stringify fails
+      }
+      await FileSystem.writeAsStringAsync(INVENTORY_FILE, jsonContent);
     } catch (e) {
       console.error("Failed to save inventory:", e);
-      Alert.alert("Error", "Failed to save inventory data.");
+      Alert.alert("Error", "Failed to save inventory data. Details: " + e.message);
     }
   };
 
@@ -528,19 +537,16 @@ const App = () => {
     });
   };
 
-  const updateInventory = (category, brand, item, updatedItemData) => {
+  // Refactored to return the new inventory state, not save it directly
+  const updateInventoryState = (category, brand, item, updatedItemData, currentInventory) => {
     if (category === 'Clips, etc.' || category === 'Other') {
-      return;
+      return currentInventory; // No change for these categories
     }
-
-    setInventory(prevInventory => {
-      const newInventory = { ...prevInventory };
-      if (!newInventory[category]) newInventory[category] = {};
-      if (!newInventory[category][brand]) newInventory[category][brand] = {};
-      newInventory[category][brand][item] = updatedItemData;
-      saveInventory(newInventory);
-      return newInventory;
-    });
+    const newInventory = { ...currentInventory };
+    if (!newInventory[category]) newInventory[category] = {};
+    if (!newInventory[category][brand]) newInventory[category][brand] = {};
+    newInventory[category][brand][item] = updatedItemData;
+    return newInventory;
   };
 
   // --- Initial Load Effect ---
@@ -789,7 +795,7 @@ const App = () => {
         <MainScreen
           addToLog={addToLog}
           inventory={inventory}
-          updateInventory={updateInventory}
+          updateInventoryState={updateInventoryState} // Pass the refactored function
           showLogView={showLogView}
           showInventoryView={showInventoryView}
           showMenuManagementView={showMenuManagementView}
@@ -824,11 +830,13 @@ const App = () => {
       ) : currentView === 'inventory' ? (
         <InventoryManagementScreen
           inventory={inventory}
-          updateInventory={updateInventory}
+          updateInventoryState={updateInventoryState} // Pass the refactored function
           addToLog={addToLog}
           showMainView={showMainView}
           menuData={menuData}
           colors={colors}
+          setInventory={setInventory} // Pass setInventory for direct state update
+          saveInventory={saveInventory} // Pass saveInventory for explicit saving
         />
       ) : currentView === 'file_management' ? (
         <FileManagementScreen showLogView={showLogView} colors={colors} />
@@ -1049,7 +1057,7 @@ const LayawayInputModal = ({ isVisible, onClose, onConfirmLayaway, itemDetails, 
 
 
 // --- Main Screen Component ---
-const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInventoryView, showMenuManagementView, showLayawayManagementView, menuData, colors, setInventory, saveInventory, saveMenus, setMenuData, setLastCompletedSaleTotal, layawayItems, setLayawayItems, saveLayaway, showDiscountModal, setShowDiscountModal, discountModalProps, setDiscountModalProps, showLayawayInputModal, setShowLayawayInputModal, layawayInputModalProps, setLayawayInputModalProps }) => {
+const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, showInventoryView, showMenuManagementView, showLayawayManagementView, menuData, colors, setInventory, saveInventory, saveMenus, setMenuData, setLastCompletedSaleTotal, layawayItems, setLayawayItems, saveLayaway, showDiscountModal, setShowDiscountModal, discountModalProps, setDiscountModalProps, showLayawayInputModal, setShowLayawayInputModal, layawayInputModalProps, setLayawayInputModalProps }) => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [customItemInput, setCustomItemInput] = useState('');
@@ -1202,7 +1210,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
             { text: "Cancel", style: "cancel" },
             {
               text: "Confirm",
-              onPress: (priceText) => {
+              onPress: async (priceText) => { // Made async
                 const price = parseFloat(priceText);
                 if (!isNaN(price) && price >= 0) {
                   const newItemData = {
@@ -1215,7 +1223,9 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
                     lastChange: 'Initial (New Item)',
                     lastChangeDate: new Date().toLocaleString()
                   };
-                  updateInventory(category, brand, item, newItemData);
+                  const updatedInventory = updateInventoryState(category, brand, item, newItemData, inventory);
+                  setInventory(updatedInventory);
+                  await saveInventory(updatedInventory); // Await save
                   handleLogSale(category, brand, item, price, 'No');
                 } else {
                   Alert.alert("Invalid Price", "Please enter a valid positive number for the price.");
@@ -1339,7 +1349,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     setIsClipAdjustmentMode(false); // Exit clip adjustment mode
   };
 
-  const handleLogSale = (category, brand, item, priceSold, discountApplied, noInventoryUpdate = false, passedItemData = null) => {
+  const handleLogSale = async (category, brand, item, priceSold, discountApplied, noInventoryUpdate = false, passedItemData = null) => {
     const itemData = passedItemData || inventory[category]?.[brand]?.[item];
 
     if (!itemData) {
@@ -1366,17 +1376,19 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     setCurrentSaleTotal(prevTotal => prevTotal + priceSold);
 
     if (!noInventoryUpdate && saleItem.isInventoryTracked) {
-      const newQuantity = itemData.quantity - 1;
+      const newQuantity = parseInt(itemData.quantity, 10) - 1; // Ensure quantity is a number
       const quantityChange = -1;
       const lastChange = `${quantityChange}`;
       const lastChangeDate = new Date().toLocaleString();
 
-      updateInventory(category, brand, item, {
+      const updatedInventory = updateInventoryState(category, brand, item, {
         ...itemData,
         quantity: newQuantity,
         lastChange: lastChange,
         lastChangeDate: lastChangeDate
-      });
+      }, inventory); // Pass current inventory to updateInventoryState
+      setInventory(updatedInventory);
+      await saveInventory(updatedInventory); // Await the save
       addToLog("Sold Item", itemData.itemCode, category, brand, item, quantityChange, newQuantity, priceSold, discountApplied);
     } else {
       const itemCode = itemData.itemCode || generateUniqueItemCode(category, brand, item);
@@ -1389,7 +1401,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     setSearchTerm('');
   };
 
-  const handleLayawayItem = (category, brand, item, originalPrice, customerName = '', customerPhone = '') => {
+  const handleLayawayItem = async (category, brand, item, originalPrice, customerName = '', customerPhone = '') => {
     const itemData = inventory[category]?.[brand]?.[item];
 
     if (!itemData) {
@@ -1418,7 +1430,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
 
     setLayawayItems(prevItems => {
       const updatedLayawayItems = [...prevItems, layawayEntry];
-      saveLayaway(updatedLayawayItems);
+      saveLayaway(updatedLayawayItems); // This save is awaited by the main flow
       return updatedLayawayItems;
     });
 
@@ -1439,18 +1451,21 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     setCurrentSaleTotal(prevTotal => prevTotal + downPayment);
 
 
+    // Deduct inventory if item is inventory tracked
     if (layawayEntry.isInventoryTracked) {
-      const newQuantity = itemData.quantity - 1;
+      const newQuantity = parseInt(itemData.quantity, 10) - 1; // Ensure quantity is a number
       const quantityChange = -1;
-      const lastChange = `${quantityChange}`;
+      const lastChange = `Layaway (-1)`;
       const lastChangeDate = new Date().toLocaleString();
 
-      updateInventory(category, brand, item, {
+      const updatedInventory = updateInventoryState(category, brand, item, {
         ...itemData,
         quantity: newQuantity,
         lastChange: lastChange,
         lastChangeDate: lastChangeDate
-      });
+      }, inventory);
+      setInventory(updatedInventory);
+      await saveInventory(updatedInventory); // Await the save
       addToLog("Layaway Started", itemData.itemCode, category, brand, item, quantityChange, newQuantity, downPayment, '30% Down');
     } else {
       addToLog("Layaway Started (No Inventory Track)", itemData.itemCode, item.category, item.brand, item.item, 'N/A', 'N/A', downPayment, '30% Down');
@@ -1467,7 +1482,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     setSearchTerm('');
   };
 
-  const handleUndoLastSaleItem = () => {
+  const handleUndoLastSaleItem = async () => { // Made async
     if (currentSaleItems.length === 0) {
       Alert.alert("No Items", "There are no items in the current sale to undo.");
       return;
@@ -1480,7 +1495,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
         { text: "Cancel", style: "cancel" },
         {
           text: "Undo",
-          onPress: () => {
+          onPress: async () => { // Made async
             setCurrentSaleItems(prevItems => {
               const lastItem = prevItems[prevItems.length - 1];
               if (!lastItem) return prevItems;
@@ -1492,13 +1507,15 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
               else if (lastItem.isInventoryTracked) {
                 const itemData = inventory[lastItem.category]?.[lastItem.brand]?.[lastItem.item];
                 if (itemData) {
-                  const newQuantity = itemData.quantity - lastItem.originalQuantityChange;
-                  updateInventory(lastItem.category, lastItem.brand, lastItem.item, {
+                  const newQuantity = parseInt(itemData.quantity, 10) - lastItem.originalQuantityChange; // Ensure quantity is a number
+                  const updatedInventory = updateInventoryState(lastItem.category, lastItem.brand, lastItem.item, {
                     ...itemData,
                     quantity: newQuantity,
                     lastChange: `Removed from Sale (+${-lastItem.originalQuantityChange})`,
                     lastChangeDate: new Date().toLocaleString()
-                  });
+                  }, inventory);
+                  setInventory(updatedInventory);
+                  // Save is awaited below after setInventory
                   addToLog("Removed from Sale", lastItem.itemCode, lastItem.category, lastItem.brand, lastItem.item, -lastItem.originalQuantityChange, newQuantity, lastItem.priceSold, lastItem.discountApplied);
                 }
               } else {
@@ -1510,6 +1527,8 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
               }
               return prevItems.slice(0, -1);
             });
+            // After state update, save the inventory
+            await saveInventory(inventory); // This will save the state after the setInventory has processed
           }
         }
       ]
@@ -1528,7 +1547,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     );
   };
 
-  const handleCancelSale = () => {
+  const handleCancelSale = async () => { // Made async
     Alert.alert(
       "Cancel Sale",
       "Are you sure you want to cancel the current sale? This will clear the total and revert inventory (if applicable). Layaway items will remain on layaway.",
@@ -1536,24 +1555,27 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
         { text: "No", style: "cancel" },
         {
           text: "Yes",
-          onPress: () => {
+          onPress: async () => { // Made async
+            let currentInventoryForRevert = { ...inventory }; // Get a mutable copy
             currentSaleItems.forEach(itemToRemove => {
                 if (itemToRemove.isInventoryTracked && !itemToRemove.isLayawayDownPayment) {
-                    const itemData = inventory[itemToRemove.category]?.[itemToRemove.brand]?.[itemToRemove.item];
+                    const itemData = currentInventoryForRevert[itemToRemove.category]?.[itemToRemove.brand]?.[itemToRemove.item];
                     if (itemData) {
-                        const newQuantity = itemData.quantity - itemToRemove.originalQuantityChange;
-                        updateInventory(itemToRemove.category, itemToRemove.brand, itemToRemove.item, {
+                        const newQuantity = parseInt(itemData.quantity, 10) - itemToRemove.originalQuantityChange; // Ensure quantity is a number
+                        currentInventoryForRevert = updateInventoryState(itemToRemove.category, itemToRemove.brand, itemToRemove.item, {
                             ...itemData,
                             quantity: newQuantity,
                             lastChange: `Sale Cancelled (+${-itemToRemove.originalQuantityChange})`,
                             lastChangeDate: new Date().toLocaleString()
-                        });
+                        }, currentInventoryForRevert);
                         addToLog("Sale Cancelled", itemToRemove.itemCode, itemToRemove.category, itemToRemove.brand, itemToRemove.item, -itemToRemove.originalQuantityChange, newQuantity, itemToRemove.priceSold, itemToRemove.discountApplied);
                     }
                 } else {
                     addToLog("Sale Cancelled (No Inventory Revert)", itemToRemove.itemCode, itemToRemove.category, itemToRemove.brand, itemToRemove.item, 'N/A', 'N/A', itemToRemove.priceSold, itemToRemove.discountApplied);
                 }
             });
+            setInventory(currentInventoryForRevert);
+            await saveInventory(currentInventoryForRevert); // Await the save
             setLastCompletedSaleTotal(0);
             setCurrentSaleTotal(0);
             setCurrentSaleItems([]);
@@ -1975,53 +1997,58 @@ const LogScreen = ({ log, showMainView, showFileManagementView, colors, lastComp
 };
 
 // --- Inventory Management Screen Component ---
-const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showMainView, menuData, colors }) => {
+const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, showMainView, menuData, colors, setInventory, saveInventory }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const handleAdjustQuantity = (category, brand, item, adjustment) => {
+  const handleAdjustQuantity = async (category, brand, item, adjustment) => { // Made async
     const itemData = inventory[category]?.[brand]?.[item];
     if (!itemData) return;
 
-    const currentQuantity = itemData.quantity;
+    const currentQuantity = parseInt(itemData.quantity, 10); // Ensure quantity is a number
     const newQuantity = currentQuantity + adjustment;
     const quantityChange = adjustment;
     const lastChange = `${quantityChange > 0 ? '+' : ''}${quantityChange}`;
     const lastChangeDate = new Date().toLocaleString();
 
-    updateInventory(category, brand, item, {
+    const updatedInventory = updateInventoryState(category, brand, item, {
       ...itemData,
       quantity: newQuantity,
       lastChange: lastChange,
       lastChangeDate: lastChangeDate
-    });
+    }, inventory);
+    setInventory(updatedInventory);
+    await saveInventory(updatedInventory); // Await the save
     addToLog("Adjusted Inventory", itemData.itemCode, category, brand, item, quantityChange, newQuantity, itemData.price, 'No');
   };
 
-  const handleManualQuantityChange = (category, brand, item, text) => {
+  const handleManualQuantityChange = async (category, brand, item, text) => { // Made async
     const itemData = inventory[category]?.[brand]?.[item];
     if (!itemData) return;
 
     const quantity = parseInt(text, 10);
     if (!isNaN(quantity)) {
-      const currentQuantity = itemData.quantity;
+      const currentQuantity = parseInt(itemData.quantity, 10); // Ensure quantity is a number
       const quantityChange = quantity - currentQuantity;
       const lastChange = quantityChange !== 0 ? `${quantityChange > 0 ? '+' : ''}${quantityChange}` : 'N/A';
       const lastChangeDate = new Date().toLocaleString();
 
-      updateInventory(category, brand, item, {
+      const updatedInventory = updateInventoryState(category, brand, item, {
         ...itemData,
         quantity: quantity,
         lastChange: lastChange,
         lastChangeDate: lastChangeDate
-      });
+      }, inventory);
+      setInventory(updatedInventory);
+      await saveInventory(updatedInventory); // Await the save
       addToLog("Manually Set Inventory", itemData.itemCode, category, brand, item, lastChange, quantity, itemData.price, 'No');
     } else if (text === '') {
+      // Allow empty input temporarily without error, but don't save
     } else {
       Alert.alert("Invalid Input", "Please enter a valid number.");
     }
   };
 
-  const handleManualPriceChange = (category, brand, item, text) => {
+  const handleManualPriceChange = async (category, brand, item, text) => { // Made async
     const itemData = inventory[category]?.[brand]?.[item];
     if (!itemData) return;
 
@@ -2031,14 +2058,17 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
       const lastChange = `Price changed from $${oldPrice.toFixed(2)} to $${price.toFixed(2)}`;
       const lastChangeDate = new Date().toLocaleString();
 
-      updateInventory(category, brand, item, {
+      const updatedInventory = updateInventoryState(category, brand, item, {
         ...itemData,
         price: price,
         lastChange: lastChange,
         lastChangeDate: lastChangeDate
-      });
+      }, inventory);
+      setInventory(updatedInventory);
+      await saveInventory(updatedInventory); // Await the save
       addToLog("Price Updated", itemData.itemCode, category, brand, item, 'N/A', itemData.quantity, price, 'No');
     } else if (text === '') {
+      // Allow empty input temporarily without error, but don't save
     } else {
       Alert.alert("Invalid Input", "Please enter a valid positive number for the price.");
     }
@@ -2106,7 +2136,7 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
                       </View>
                       <View style={styles.inventoryControls}>
                         <TouchableOpacity style={[styles.inventoryButtonSmall, { backgroundColor: colors.buttonBgLight }]} onPress={() => handleAdjustQuantity(item.category, item.brand, item.item, -1)}>
-                          <Text style={[styles.buttonText, { color: colors.text }]}>-</Text>
+                          <Text style={[styles.buttonText, { color: colors.headerText }]}>-</Text>
                         </TouchableOpacity>
                         <TextInput
                           style={[styles.inventoryInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
@@ -2115,7 +2145,7 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
                           onChangeText={(text) => handleManualQuantityChange(item.category, item.brand, item.item, text)}
                         />
                         <TouchableOpacity style={[styles.inventoryButtonSmall, { backgroundColor: colors.buttonBgLight }]} onPress={() => handleAdjustQuantity(item.category, item.brand, item.item, 1)}>
-                          <Text style={[styles.buttonText, { color: colors.text }]}>+</Text>
+                          <Text style={[styles.buttonText, { color: colors.headerText }]}>+</Text>
                         </TouchableOpacity>
 
                         <Text style={[styles.priceLabel, { color: colors.text }]}>$</Text>
@@ -2316,12 +2346,12 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
     ? menuData.categories.find(cat => cat.name === selectedCategoryForBrand)?.brands.map(brand => brand.name) || []
     : [];
 
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => { // Made async
     if (newCategoryInput.trim() !== '' && !menuData.categories.some(cat => cat.name === newCategoryInput.trim())) {
       const updatedCategories = [...menuData.categories, { name: newCategoryInput.trim(), brands: [] }];
       const updatedMenuData = { ...menuData, categories: updatedCategories };
       setMenuData(updatedMenuData);
-      saveMenus(updatedMenuData);
+      await saveMenus(updatedMenuData); // Await save
       addToLog("Menu Changed", "N/A", newCategoryInput.trim(), "N/A", "N/A", "Category Added", "N/A", "N/A", "No");
       setNewCategoryInput('');
     } else {
@@ -2337,21 +2367,22 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
-          onPress: () => {
+          onPress: async () => { // Made async
             const updatedMenuData = {
               ...menuData,
               categories: menuData.categories.filter(cat => cat.name !== categoryName)
             };
             setMenuData(updatedMenuData);
-            saveMenus(updatedMenuData);
+            await saveMenus(updatedMenuData); // Await save
 
             if (categoryName !== 'Clips, etc.' && categoryName !== 'Other') {
               setInventory(prevInventory => {
                 const newInventory = { ...prevInventory };
                 delete newInventory[categoryName];
-                saveInventory(newInventory);
+                // saveInventory(newInventory); // Removed direct save here
                 return newInventory;
               });
+              await saveInventory(inventory); // Save after setInventory has processed
             }
             addToLog("Menu Changed", "N/A", categoryName, "N/A", "N/A", "Category Deleted", "N/A", "N/A", "No");
             setSelectedCategoryForBrand(null);
@@ -2362,7 +2393,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
     );
   };
 
-  const handleAddBrand = () => {
+  const handleAddBrand = async () => { // Made async
     if (!selectedCategoryForBrand) {
       Alert.alert("Selection Required", "Please select a category first.");
       return;
@@ -2375,7 +2406,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         if (!category.brands.some(brand => brand.name === newBrandInput.trim())) {
           category.brands.push({ name: newBrandInput.trim(), items: [] });
           setMenuData(updatedMenuData);
-          saveMenus(updatedMenuData);
+          await saveMenus(updatedMenuData); // Await save
           addToLog("Menu Changed", "N/A", selectedCategoryForBrand, newBrandInput.trim(), "N/A", "Brand Added", "N/A", "N/A", "No");
           setNewBrandInput('');
         } else {
@@ -2395,7 +2426,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
-          onPress: () => {
+          onPress: async () => { // Made async
             const updatedMenuData = { ...menuData };
             const category = updatedMenuData.categories.find(cat => cat.name === categoryName);
             if (category) {
@@ -2408,7 +2439,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
               if (brand) {
                 category.brands = category.brands.filter(b => b.name !== brandName);
                 setMenuData(updatedMenuData);
-                saveMenus(updatedMenuData);
+                await saveMenus(updatedMenuData); // Await save
 
                 if (categoryName !== 'Clips, etc.' && categoryName !== 'Other') {
                   setInventory(prevInventory => {
@@ -2419,9 +2450,10 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
                         delete newInventory[categoryName];
                       }
                     }
-                    saveInventory(newInventory);
+                    // saveInventory(newInventory); // Removed direct save here
                     return newInventory;
                   });
+                  await saveInventory(inventory); // Save after setInventory has processed
                 }
                 addToLog("Menu Changed", "N/A", categoryName, brandName, "N/A", "Brand Deleted", "N/A", "N/A", "No");
                 setSelectedBrandForItems(null);
@@ -2433,7 +2465,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
     );
   };
 
-  const handleAddItem = () => {
+  const handleAddItem = async () => { // Made async
     if (!selectedCategoryForBrand || !selectedBrandForItems) {
       Alert.alert("Selection Required", "Please select a category and brand first.");
       return;
@@ -2465,26 +2497,21 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         if (!brand.items.some(itemObj => itemObj.name === newItemInput.trim())) {
           brand.items.push({ name: newItemInput.trim(), price: itemPrice });
           setMenuData(updatedMenuData);
-          saveMenus(updatedMenuData);
+          await saveMenus(updatedMenuData); // Await save
 
           if (selectedCategoryForBrand !== 'Clips, etc.' && selectedCategoryForBrand !== 'Other') {
-            setInventory(prevInventory => {
-              const newInventory = { ...prevInventory };
-              if (!newInventory[selectedCategoryForBrand]) newInventory[selectedCategoryForBrand] = {};
-              if (!newInventory[selectedCategoryForBrand][selectedBrandForItems]) newInventory[selectedCategoryForBrand][selectedBrandForItems] = {};
-              newInventory[selectedCategoryForBrand][selectedBrandForItems][newItemInput.trim()] = {
-                itemCode: generateUniqueItemCode(selectedCategoryForBrand, selectedBrandForItems, newItemInput.trim()),
-                category: selectedCategoryForBrand,
-                brand: selectedBrandForItems,
-                item: newItemInput.trim(),
-                quantity: DEFAULT_ITEM_QUANTITY,
-                price: itemPrice,
-                lastChange: 'Initial (Menu Add)',
-                lastChangeDate: new Date().toLocaleString()
-              };
-              saveInventory(newInventory);
-              return newInventory;
-            });
+            const updatedInventory = updateInventoryState(selectedCategoryForBrand, selectedBrandForItems, newItemInput.trim(), {
+              itemCode: generateUniqueItemCode(selectedCategoryForBrand, selectedBrandForItems, newItemInput.trim()),
+              category: selectedCategoryForBrand,
+              brand: selectedBrandForItems,
+              item: newItemInput.trim(),
+              quantity: DEFAULT_ITEM_QUANTITY,
+              price: itemPrice,
+              lastChange: 'Initial (Menu Add)',
+              lastChangeDate: new Date().toLocaleString()
+            }, inventory);
+            setInventory(updatedInventory);
+            await saveInventory(updatedInventory); // Await save
           }
 
           addToLog("Menu Changed", "N/A", selectedCategoryForBrand, selectedBrandForItems, newItemInput.trim(), "Item Added", "N/A", itemPrice, "No");
@@ -2505,7 +2532,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
-          onPress: () => {
+          onPress: async () => { // Made async
             const updatedMenuData = { ...menuData };
             const category = updatedMenuData.categories.find(cat => cat.name === categoryName);
             if (category) {
@@ -2518,7 +2545,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
 
                 brand.items = brand.items.filter(itemObj => itemObj.name !== itemName);
                 setMenuData(updatedMenuData);
-                saveMenus(updatedMenuData);
+                await saveMenus(updatedMenuData); // Await save
 
                 if (categoryName !== 'Clips, etc.' && categoryName !== 'Other') {
                   setInventory(prevInventory => {
@@ -2532,9 +2559,10 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
                         }
                       }
                     }
-                    saveInventory(newInventory);
+                    // saveInventory(newInventory); // Removed direct save here
                     return newInventory;
                   });
+                  await saveInventory(inventory); // Save after setInventory has processed
                 }
                 addToLog("Menu Changed", "N/A", categoryName, brandName, itemName, "Item Deleted", "N/A", "N/A", "No");
               }
@@ -2848,7 +2876,7 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, i
     setPaymentInputs(prev => ({ ...prev, [layawayId]: text }));
   };
 
-  const handleApplyPayment = (layawayItem) => {
+  const handleApplyPayment = async (layawayItem) => { // Made async
     const paymentAmount = parseFloat(paymentInputs[layawayItem.layawayId]);
 
     if (isNaN(paymentAmount) || paymentAmount <= 0) {
@@ -2874,7 +2902,7 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, i
     });
 
     setLayawayItems(updatedLayawayItems);
-    saveLayaway(updatedLayawayItems);
+    await saveLayaway(updatedLayawayItems); // Await save
     addToLog("Layaway Payment", layawayItem.itemCode, layawayItem.category, layawayItem.brand, layawayItem.item, `+${paymentAmount.toFixed(2)}`, layawayItem.remainingBalance - paymentAmount, paymentAmount, 'Layaway Payment');
     setPaymentInputs(prev => ({ ...prev, [layawayItem.layawayId]: '' }));
     Alert.alert("Payment Applied", `Successfully applied $${paymentAmount.toFixed(2)} to ${layawayItem.item}.`);
@@ -2893,10 +2921,10 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, i
         { text: "Cancel", style: "cancel" },
         {
           text: "Confirm",
-          onPress: () => {
+          onPress: async () => { // Made async
             const updatedLayawayItems = layawayItems.filter(item => item.layawayId !== layawayItem.layawayId);
             setLayawayItems(updatedLayawayItems);
-            saveLayaway(updatedLayawayItems);
+            await saveLayaway(updatedLayawayItems); // Await save
             addToLog("Layaway Completed", layawayItem.itemCode, layawayItem.category, layawayItem.brand, layawayItem.item, 'N/A', 'N/A', layawayItem.originalPrice, 'Layaway Paid Off');
             Alert.alert("Layaway Completed", `${layawayItem.item} has been marked as paid off.`);
           }
@@ -2913,47 +2941,66 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, i
         { text: "No", style: "cancel" },
         {
           text: "Yes, Cancel",
-          onPress: () => {
+          onPress: async () => { // Made async to allow awaiting file operations
+            // 1. Remove item from layaway and save layaway list
             const updatedLayawayItems = layawayItems.filter(item => item.layawayId !== layawayItem.layawayId);
             setLayawayItems(updatedLayawayItems);
-            saveLayaway(updatedLayawayItems);
+            await saveLayaway(updatedLayawayItems); // Await this save
 
+            // 2. Re-add to inventory if item was inventory-tracked
             if (layawayItem.isInventoryTracked) {
-              setInventory(prevInventory => {
-                const newInventory = { ...prevInventory };
-                const category = layawayItem.category;
-                const brand = layawayItem.brand;
-                const item = layawayItem.item;
+              const category = layawayItem.category;
+              const brand = layawayItem.brand;
+              const item = layawayItem.item;
 
-                if (!newInventory[category]) newInventory[category] = {};
-                if (!newInventory[category][brand]) newInventory[category][brand] = {};
+              // Get a fresh copy of the inventory state to modify
+              let inventoryToUpdate = { ...inventory };
 
-                const existingItem = newInventory[category][brand][item];
-                if (existingItem) {
-                  const newQuantity = existingItem.quantity + 1;
-                  newInventory[category][brand][item] = {
-                    ...existingItem,
-                    quantity: newQuantity,
-                    lastChange: 'Layaway Cancelled (+1)',
-                    lastChangeDate: new Date().toLocaleString()
-                  };
-                  addToLog("Layaway Cancelled (Returned to Stock)", layawayItem.itemCode, category, brand, item, '+1', newQuantity, 'N/A', 'Layaway Cancelled');
-                } else {
-                  newInventory[category][brand][item] = {
-                    itemCode: layawayItem.itemCode,
-                    category: category,
-                    brand: brand,
-                    item: item,
-                    quantity: 1,
-                    price: layawayItem.originalPrice,
-                    lastChange: 'Layaway Cancelled (Re-added)',
-                    lastChangeDate: new Date().toLocaleString()
-                  };
-                  addToLog("Layaway Cancelled (Re-added to Stock)", layawayItem.itemCode, category, brand, item, '+1', 1, 'N/A', 'Layaway Cancelled');
-                }
-                saveInventory(newInventory);
-                return newInventory;
-              });
+              const currentItemData = inventoryToUpdate[category]?.[brand]?.[item];
+
+              if (currentItemData) {
+                // Item exists, increment quantity. Ensure quantity is parsed as an integer.
+                const newQuantity = parseInt(currentItemData.quantity, 10) + 1;
+                const updatedItemData = {
+                  ...currentItemData,
+                  quantity: newQuantity,
+                  lastChange: 'Layaway Cancelled (+1)',
+                  lastChangeDate: new Date().toLocaleString()
+                };
+                // Update the local copy of inventoryToUpdate
+                inventoryToUpdate = {
+                  ...inventoryToUpdate,
+                  [category]: {
+                    ...(inventoryToUpdate[category] || {}),
+                    [brand]: {
+                      ...(inventoryToUpdate[category]?.[brand] || {}),
+                      [item]: updatedItemData
+                    }
+                  }
+                };
+                addToLog("Layaway Cancelled (Returned to Stock)", layawayItem.itemCode, category, brand, item, '+1', newQuantity, 'N/A', 'Layaway Cancelled');
+              } else {
+                // Item was not found in current inventory (e.g., deleted from menu), re-add it with quantity 1
+                const reAddedItemData = {
+                  itemCode: layawayItem.itemCode,
+                  category: category,
+                  brand: brand,
+                  item: item,
+                  quantity: 1, // Default quantity to 1 when re-adding a missing item
+                  price: layawayItem.originalPrice,
+                  lastChange: 'Layaway Cancelled (Re-added)',
+                  lastChangeDate: new Date().toLocaleString()
+                };
+                // Manually add to inventoryToUpdate, creating category/brand if they don't exist
+                if (!inventoryToUpdate[category]) inventoryToUpdate[category] = {};
+                if (!inventoryToUpdate[category][brand]) inventoryToUpdate[category][brand] = {};
+                inventoryToUpdate[category][brand][item] = reAddedItemData;
+                addToLog("Layaway Cancelled (Re-added to Stock)", layawayItem.itemCode, category, brand, item, '+1', 1, 'N/A', 'Layaway Cancelled');
+              }
+
+              // Set the new inventory state and await its save
+              setInventory(inventoryToUpdate);
+              await saveInventory(inventoryToUpdate); // Await this save
             } else {
               addToLog("Layaway Cancelled (Not Inventory Tracked)", layawayItem.itemCode, layawayItem.category, layawayItem.brand, layawayItem.item, 'N/A', 'N/A', 'N/A', 'Layaway Cancelled');
             }
