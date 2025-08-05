@@ -9,7 +9,8 @@ import {
   SafeAreaView,
   Alert,
   Platform,
-  Modal
+  Modal,
+  KeyboardAvoidingView // Import KeyboardAvoidingView
 } from 'react-native';
 import *as FileSystem from 'expo-file-system';
 import *as Sharing from 'expo-sharing';
@@ -181,6 +182,17 @@ const App = () => {
   const [isEditModeEnabled, setIsEditModeEnabled] = useState(false);
   const [colorScheme, setColorScheme] = useState(DEFAULT_COLOR_SCHEME);
   const [lastCompletedSaleTotal, setLastCompletedSaleTotal] = useState(0);
+
+  // New states for the custom discount modal
+  const [showDiscountModal, setShowDiscountModal] = useState(false);
+  const [discountModalProps, setDiscountModalProps] = useState({
+    category: '', brand: '', item: '', currentPrice: 0, noInventoryUpdate: false, passedItemData: null
+  });
+
+  // New states for the custom layaway input modal
+  const [showLayawayInputModal, setShowLayawayInputModal] = useState(false);
+  const [layawayInputModalProps, setLayawayInputModalProps] = useState(null);
+
 
   // --- File System Functions ---
   const ensureLogDirectoryExists = async () => {
@@ -394,29 +406,36 @@ const App = () => {
         loadedMenuData = DEFAULT_MENUS;
       }
 
+      // Ensure 'Clips, etc.' category and 'Fixed Prices' brand are present
       let clipsCategory = loadedMenuData.categories.find(cat => cat.name === 'Clips, etc.');
       if (!clipsCategory) {
         clipsCategory = { name: 'Clips, etc.', brands: [{ name: 'Fixed Prices', items: [] }] };
         loadedMenuData.categories.push(clipsCategory);
       }
-
       let fixedPricesBrand = clipsCategory.brands.find(brand => brand.name === 'Fixed Prices');
       if (!fixedPricesBrand) {
           fixedPricesBrand = { name: 'Fixed Prices', items: [] };
           clipsCategory.brands.push(fixedPricesBrand);
       }
-
       const fixedPrices = [
         2, 5, 10, 12, 14, 18, 20, 22, 25, 30,
         40, 50, 60, 70, 80, 90, 100, 110, 120, 130,
         140, 150, 160, 170, 180, 190, 200, 250
       ];
-      fixedPricesBrand.items = [];
+      fixedPricesBrand.items = []; // Clear existing to ensure fresh list
       fixedPrices.forEach(price => {
         const itemName = `$${price}.00`;
         fixedPricesBrand.items.push({ name: itemName, price: price });
       });
 
+      // Ensure 'Other' category is present
+      let otherCategory = loadedMenuData.categories.find(cat => cat.name === 'Other');
+      if (!otherCategory) {
+        otherCategory = { name: 'Other', brands: [] };
+        loadedMenuData.categories.push(otherCategory);
+      }
+      // Note: The 'Custom' brand for 'Other' is not explicitly added here as it's handled dynamically
+      // for one-time sales and doesn't need to persist in the menu structure.
 
       setMenuData(loadedMenuData);
       await saveMenus(loadedMenuData);
@@ -570,7 +589,7 @@ const App = () => {
               await FileSystem.deleteAsync(INVENTORY_FILE, { idempotent: true });
               await FileSystem.deleteAsync(MENUS_FILE, { idempotent: true });
               await FileSystem.deleteAsync(COLOR_SCHEME_FILE, { idempotent: true });
-              await FileSystem.deleteAsync(CONFIG_BACKUP_FILE, { idempotent: true });
+              // Removed: await FileSystem.deleteAsync(CONFIG_BACKUP_FILE, { idempotent: true });
               await FileSystem.deleteAsync(LAYAWAY_FILE, { idempotent: true });
               const files = await FileSystem.readDirectoryAsync(LOG_DIRECTORY);
               for (const file of files) {
@@ -785,6 +804,14 @@ const App = () => {
           layawayItems={layawayItems}
           setLayawayItems={setLayawayItems}
           saveLayaway={saveLayaway}
+          showDiscountModal={showDiscountModal}
+          setShowDiscountModal={setShowDiscountModal}
+          discountModalProps={discountModalProps}
+          setDiscountModalProps={setDiscountModalProps}
+          showLayawayInputModal={showLayawayInputModal}
+          setShowLayawayInputModal={setShowLayawayInputModal}
+          layawayInputModalProps={layawayInputModalProps}
+          setLayawayInputModalProps={setLayawayInputModalProps}
         />
       ) : currentView === 'log' ? (
         <LogScreen
@@ -867,7 +894,8 @@ const DiscountModal = ({ isVisible, onClose, onSelectDiscount, onManualDiscount,
     if (!isNaN(percentage) && percentage >= 0 && percentage <= 100) {
       onManualDiscount(percentage);
       onClose(); // Close modal after applying
-    } else {
+    }
+    else {
       Alert.alert("Invalid Input", "Please enter a valid percentage between 0 and 100.");
     }
   };
@@ -943,9 +971,85 @@ const DiscountModal = ({ isVisible, onClose, onSelectDiscount, onManualDiscount,
   );
 };
 
+// --- Layaway Input Modal Component ---
+const LayawayInputModal = ({ isVisible, onClose, onConfirmLayaway, itemDetails, colors }) => {
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+
+  useEffect(() => {
+    if (isVisible) {
+      setCustomerName('');
+      setCustomerPhone('');
+    }
+  }, [isVisible]);
+
+  const handleSubmit = () => {
+    if (itemDetails) {
+      onConfirmLayaway({ customerName, customerPhone });
+    }
+  };
+
+  if (!itemDetails) return null; // Prevent rendering if no itemDetails
+
+  return (
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={isVisible}
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.centeredView}
+      >
+        <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Layaway for "{itemDetails.item}"</Text>
+          <Text style={[styles.modalSubtitle, { color: colors.text }]}>
+            Original Price: ${itemDetails.originalPrice.toFixed(2)}
+          </Text>
+          <Text style={[styles.modalSubtitle, { color: colors.text }]}>
+            Down Payment (30%): ${(itemDetails.originalPrice * 0.30).toFixed(2)}
+          </Text>
+
+          <TextInput
+            style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+            placeholder="Customer Name (Optional)"
+            placeholderTextColor={colors.logDetails}
+            value={customerName}
+            onChangeText={setCustomerName}
+            autoCapitalize="words"
+          />
+          <TextInput
+            style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+            placeholder="Customer Phone (Optional)"
+            placeholderTextColor={colors.logDetails}
+            keyboardType="phone-pad"
+            value={customerPhone}
+            onChangeText={setCustomerPhone}
+          />
+
+          <TouchableOpacity
+            style={[styles.modalButton, { backgroundColor: colors.buttonBgPrimary, width: '100%' }]}
+            onPress={handleSubmit}
+          >
+            <Text style={[styles.buttonText, { color: colors.headerText }]}>Confirm Layaway</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.modalActionButton, { backgroundColor: colors.buttonBgDanger, marginTop: 10 }]}
+            onPress={onClose}
+          >
+            <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+};
+
 
 // --- Main Screen Component ---
-const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInventoryView, showMenuManagementView, showLayawayManagementView, menuData, colors, setInventory, saveInventory, saveMenus, setMenuData, setLastCompletedSaleTotal, layawayItems, setLayawayItems, saveLayaway }) => {
+const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInventoryView, showMenuManagementView, showLayawayManagementView, menuData, colors, setInventory, saveInventory, saveMenus, setMenuData, setLastCompletedSaleTotal, layawayItems, setLayawayItems, saveLayaway, showDiscountModal, setShowDiscountModal, discountModalProps, setDiscountModalProps, showLayawayInputModal, setShowLayawayInputModal, layawayInputModalProps, setLayawayInputModalProps }) => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [customItemInput, setCustomItemInput] = useState('');
@@ -956,11 +1060,6 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
   const [currentSaleItems, setCurrentSaleItems] = useState([]);
   const [isClipAdjustmentMode, setIsClipAdjustmentMode] = useState(false);
 
-  // New states for the custom discount modal
-  const [showDiscountModal, setShowDiscountModal] = useState(false);
-  const [discountModalProps, setDiscountModalProps] = useState({
-    category: '', brand: '', item: '', currentPrice: 0, noInventoryUpdate: false, passedItemData: null
-  });
 
   useEffect(() => {
     const flattenedItems = [];
@@ -990,23 +1089,8 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
       });
     });
 
-    const otherCategory = menuData.categories.find(cat => cat.name === 'Other');
-    if (otherCategory) {
-      const customBrand = otherCategory.brands.find(brand => brand.name === 'Custom');
-      if (customBrand) {
-        customBrand.items.forEach(itemObj => {
-          flattenedItems.push({
-            itemCode: generateUniqueItemCode('Other', 'Custom', itemObj.name),
-            category: 'Other',
-            brand: 'Custom',
-            item: itemObj.name,
-            quantity: 'N/A',
-            price: itemObj.price,
-            displayPath: `Other > Custom > ${itemObj.name}`
-          });
-        });
-      }
-    }
+    // We no longer add 'Other' items from the menu structure to allSearchableItems
+    // as they are handled as one-time custom inputs.
     setAllSearchableItems(flattenedItems);
   }, [inventory, menuData]);
 
@@ -1078,8 +1162,10 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
         }
         return;
       } else if (category === 'Other') {
+        // This path is for "Other" items selected from the menu (if any were somehow added)
+        // or for fixed price "Other" items.
         const categoryObj = menuData.categories.find(c => c.name === category);
-        const brandObj = categoryObj?.brands.find(b => b.name === 'Custom');
+        const brandObj = categoryObj?.brands.find(b => b.name === 'Custom'); // Assuming 'Custom' is the brand for Other
         const menuItem = brandObj?.items.find(i => i.name === item);
         if (menuItem) {
           priceToUse = menuItem.price;
@@ -1093,10 +1179,22 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
           };
           handleLogSale(category, brand, item, priceToUse, 'No', true, tempItemData);
         } else {
-          Alert.alert("Error", "Custom 'Other' item not found in menu data.");
+          // If a custom 'Other' item was manually added to the menu (which we now prevent),
+          // or if it's an 'Other' item not found, it falls here.
+          // For now, we'll treat it as a generic 'Other' sale.
+          const tempItemData = {
+            itemCode: generateUniqueItemCode(category, brand, item),
+            category: category,
+            brand: brand,
+            item: item,
+            quantity: 'N/A',
+            price: priceToUse || DEFAULT_ITEM_PRICE, // Use default if price is missing
+          };
+          handleLogSale(category, brand, item, tempItemData.price, 'No', true, tempItemData);
         }
         return;
       } else {
+        // This path is for new items added to inventory-tracked categories via selection.
         Alert.prompt(
           "Set Price for New Item",
           `Enter price for "${item}" (Category: ${category}, Brand: ${brand}). An item code will be generated.`,
@@ -1161,7 +1259,10 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
                   },
                   {
                     text: "Layaway (30% Down)",
-                    onPress: () => handleLayawayItem(category, brand, item, currentItemPrice),
+                    onPress: () => {
+                      setLayawayInputModalProps({ category, brand, item, originalPrice: currentItemPrice, itemData: itemData });
+                      setShowLayawayInputModal(true);
+                    },
                   },
                   {
                     text: "Cancel",
@@ -1193,7 +1294,10 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
         },
         {
           text: "Layaway (30% Down)",
-          onPress: () => handleLayawayItem(category, brand, item, currentItemPrice),
+          onPress: () => {
+            setLayawayInputModalProps({ category, brand, item, originalPrice: currentItemPrice, itemData: itemData });
+            setShowLayawayInputModal(true);
+          },
         },
         {
           text: "Cancel",
@@ -1252,6 +1356,8 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
       itemCode: itemData.itemCode || generateUniqueItemCode(category, brand, item),
       priceSold,
       discountApplied,
+      // isInventoryTracked is false for 'Clips, etc.' and 'Other' categories.
+      // This ensures they don't affect inventory counts.
       isInventoryTracked: category !== 'Clips, etc.' && category !== 'Other',
       originalQuantityChange: noInventoryUpdate ? 0 : -1,
       isLayawayDownPayment: false,
@@ -1283,7 +1389,7 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
     setSearchTerm('');
   };
 
-  const handleLayawayItem = (category, brand, item, originalPrice) => {
+  const handleLayawayItem = (category, brand, item, originalPrice, customerName = '', customerPhone = '') => {
     const itemData = inventory[category]?.[brand]?.[item];
 
     if (!itemData) {
@@ -1306,6 +1412,8 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
       remainingBalance: remainingBalance,
       layawayDate: new Date().toLocaleString(),
       isInventoryTracked: category !== 'Clips, etc.' && category !== 'Other',
+      customerName: customerName, // New field
+      customerPhone: customerPhone, // New field
     };
 
     setLayawayItems(prevItems => {
@@ -1467,52 +1575,36 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
       return;
     }
 
-    const targetCategory = selectedCategory || 'Other';
-    const targetBrand = selectedBrand || 'Custom';
-
-    let categoryFound = false;
-    let brandFound = false;
-
-    const updatedCategories = menuData.categories.map(cat => {
-        if (cat.name === targetCategory) {
-            categoryFound = true;
-            let updatedBrands = cat.brands.map(brand => {
-                if (brand.name === targetBrand) {
-                    brandFound = true;
-                    if (brand.items.some(itemObj => itemObj.name === customItemName)) {
-                        Alert.alert("Duplicate Item", `Item "${customItemName}" already exists in ${targetCategory} > ${targetBrand}.`);
-                        return brand;
-                    }
-                    return { ...brand, items: [...brand.items, { name: customItemName, price: price }] };
-                }
-                return brand;
-            });
-            if (!brandFound) {
-                updatedBrands = [...updatedBrands, { name: targetBrand, items: [{ name: customItemName, price: price }] }];
-            }
-            return { ...cat, brands: updatedBrands };
-        }
-        return cat;
-    });
-
-    const finalMenuData = { ...menuData, categories: updatedCategories };
-    setMenuData(finalMenuData);
-    saveMenus(finalMenuData);
-
+    // For "Other" items added via custom input, we do NOT modify menuData or inventory.
+    // They are purely for logging and current sale calculation.
     const newItemData = {
-      itemCode: generateUniqueItemCode(targetCategory, targetBrand, customItemName),
-      category: targetCategory,
-      brand: targetBrand,
+      itemCode: generateUniqueItemCode('Other', 'Custom', customItemName), // Assign to 'Other' category, 'Custom' brand
+      category: 'Other',
+      brand: 'Custom',
       item: customItemName,
-      quantity: 'N/A',
+      quantity: 'N/A', // Not inventory tracked
       price: price,
-      lastChange: 'Initial (Custom Item)',
+      lastChange: 'Initial (Custom Sale)',
       lastChangeDate: new Date().toLocaleString()
     };
 
-    handleLogSale(targetCategory, targetBrand, customItemName, price, 'No', true, newItemData);
+    // Log the sale as a non-inventory-tracked item
+    handleLogSale('Other', 'Custom', customItemName, price, 'No', true, newItemData);
+
+    // Clear input fields
     setCustomItemInput('');
     setCustomItemPriceInput(String(DEFAULT_ITEM_PRICE.toFixed(2)));
+
+    // No menuData or saveMenus calls here for custom 'Other' items
+  };
+
+  const handleViewSaleItems = () => {
+    if (currentSaleItems.length === 0) {
+      Alert.alert("", "No items in current sale.");
+      return;
+    }
+    const itemList = currentSaleItems.map(item => item.item).join('\n');
+    Alert.alert("", itemList);
   };
 
 
@@ -1529,59 +1621,71 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
       />
 
       {searchTerm.length > 0 ? (
-        <ScrollView style={styles.selectionScrollView}>
-          <Text style={[styles.title, { color: colors.text }]}>Search Results</Text>
-          <View style={styles.buttonGrid}>
-            {globallyFilteredItems.length > 0 ? (
-              globallyFilteredItems.map((itemData) => (
-                <TouchableOpacity
-                  key={itemData.itemCode}
-                  style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]}
-                  onPress={() => handleItemClickForSale(itemData.category, itemData.brand, itemData.item)}>
-                  <Text style={[styles.buttonText, { color: colors.text }]}>
-                    {itemData.category === 'Clips, etc.' || itemData.category === 'Other' ? `${itemData.item}` : itemData.item}
-                  </Text>
-                  <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>
-                    {itemData.category === 'Clips, etc.' ? `Fixed Price` : itemData.displayPath}
-                  </Text>
-                  <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Code: {itemData.itemCode}</Text>
-                  {(itemData.category !== 'Clips, etc.' && itemData.category !== 'Other') && (
-                    <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>
-                      Price: ${ (typeof itemData.price === 'number' && !isNaN(itemData.price)) ? itemData.price.toFixed(2) : 'N/A' }
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <ScrollView style={styles.selectionScrollView}>
+            <Text style={[styles.title, { color: colors.text }]}>Search Results</Text>
+            <View style={styles.buttonGrid}>
+              {globallyFilteredItems.length > 0 ? (
+                globallyFilteredItems.map((itemData) => (
+                  <TouchableOpacity
+                    key={itemData.itemCode}
+                    style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]}
+                    onPress={() => handleItemClickForSale(itemData.category, itemData.brand, itemData.item)}>
+                    <Text style={[styles.buttonText, { color: colors.text }]}>
+                      {itemData.category === 'Clips, etc.' ? `${itemData.item}` : itemData.item}
                     </Text>
-                  )}
-                  {(itemData.category !== 'Clips, etc.' && itemData.category !== 'Other') && itemData.quantity !== 'N/A' && (
-                    <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Qty: {itemData.quantity}</Text>
-                  )}
-                </TouchableOpacity>
-              ))
-            ) : (
-              <Text style={[styles.buttonText, { color: colors.text, width: '100%', textAlign: 'center' }]}>No matching items found.</Text>
-            )}
-          </View>
-          <Text style={[styles.subtitle, { color: colors.text }]}>Can't find it? Add a custom item:</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-            placeholder="e.g., New Custom Product Name"
-            placeholderTextColor={colors.logDetails}
-            value={customItemInput}
-            onChangeText={setCustomItemInput}
-            autoCapitalize="words"
-            autoCorrect={false}
-          />
-          <Text style={[styles.inputLabel, { color: colors.text }]}>Price:</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-            placeholder="e.g., 25.00"
-            placeholderTextColor={colors.logDetails}
-            keyboardType="numeric"
-            value={customItemPriceInput}
-            onChangeText={setCustomItemPriceInput}
-          />
-          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleCustomItemSubmit}>
-            <Text style={[styles.buttonText, { color: colors.headerText }]}>Log Sale: {customItemInput || 'Custom Item'}</Text>
-          </TouchableOpacity>
-        </ScrollView>
+                    <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>
+                      {itemData.category === 'Clips, etc.' ? `Fixed Price` : itemData.displayPath}
+                    </Text>
+                    <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Code: {itemData.itemCode}</Text>
+                    {(itemData.category !== 'Clips, etc.' && itemData.category !== 'Other') && (
+                      <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>
+                        Price: ${ (typeof itemData.price === 'number' && !isNaN(itemData.price)) ? itemData.price.toFixed(2) : 'N/A' }
+                      </Text>
+                    )}
+                    {(itemData.category !== 'Clips, etc.' && itemData.category !== 'Other') && itemData.quantity !== 'N/A' && (
+                      <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Qty: {itemData.quantity}</Text>
+                    )}
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <Text style={[styles.buttonText, { color: colors.text, width: '100%', textAlign: 'center' }]}>No matching items found.</Text>
+              )}
+            </View>
+            <Text style={[styles.subtitle, { color: colors.text }]}>Can't find it? Add a custom item (logs sale only, no menu/inventory impact):</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+              placeholder="e.g., New Custom Product Name"
+              placeholderTextColor={colors.logDetails}
+              value={customItemInput}
+              onChangeText={setCustomItemInput}
+              autoCapitalize="words"
+              autoCorrect={false}
+            />
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Price:</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+              placeholder="e.g., 25.00"
+              placeholderTextColor={colors.logDetails}
+              keyboardType="numeric"
+              value={customItemPriceInput}
+              onChangeText={setCustomItemPriceInput}
+            />
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                { backgroundColor: colors.buttonBgPrimary, opacity: customItemInput.trim() ? 1 : 0.5 }
+              ]}
+              onPress={customItemInput.trim() ? handleCustomItemSubmit : null}
+              disabled={!customItemInput.trim()}
+            >
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Log Sale: {customItemInput || 'Custom Item'}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
       ) : (
         <>
           {!selectedCategory ? (
@@ -1656,80 +1760,92 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
               </TouchableOpacity>
             </ScrollView>
           ) : selectedCategory === 'Other' || selectedBrand ? (
-            <ScrollView style={styles.selectionScrollView}>
-              <Text style={[styles.title, { color: colors.text }]}>
-                {selectedCategory === 'Other' ? 'Enter Custom Item for "Other"' : `3. Select an Item for ${selectedCategory} - ${selectedBrand}`}
-              </Text>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1 }}
+            >
+              <ScrollView style={styles.selectionScrollView}>
+                <Text style={[styles.title, { color: colors.text }]}>
+                  {selectedCategory === 'Other' ? 'Enter Custom Item for "Other"' : `3. Select an Item for ${selectedCategory} - ${selectedBrand}`}
+                </Text>
 
-              {selectedCategory !== 'Other' && (
-                <View style={styles.buttonGrid}>
-                  {filteredItems.map((itemObj) => {
-                    const itemName = itemObj.name;
-                    const itemData = inventory[selectedCategory]?.[selectedBrand]?.[itemName];
-                    return (
-                      <TouchableOpacity
-                        key={itemName}
-                        style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]}
-                        onPress={() => handleItemClickForSale(selectedCategory, selectedBrand, itemName)}>
-                        <Text style={[styles.buttonText, { color: colors.text }]}>
-                          {itemObj.category === 'Clips, etc.' ? `${itemObj.name}` : itemName}
-                        </Text>
-                        {itemData && (itemData.category !== 'Clips, etc.' ? (
-                          <>
-                            <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Code: {itemData.itemCode}</Text>
+                {selectedCategory !== 'Other' && (
+                  <View style={styles.buttonGrid}>
+                    {filteredItems.map((itemObj) => {
+                      const itemName = itemObj.name;
+                      const itemData = inventory[selectedCategory]?.[selectedBrand]?.[itemName];
+                      return (
+                        <TouchableOpacity
+                          key={itemName}
+                          style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]}
+                          onPress={() => handleItemClickForSale(selectedCategory, selectedBrand, itemName)}>
+                          <Text style={[styles.buttonText, { color: colors.text }]}>
+                            {itemObj.category === 'Clips, etc.' ? `${itemObj.name}` : itemName}
+                          </Text>
+                          {itemData && (itemData.category !== 'Clips, etc.' ? (
+                            <>
+                              <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Code: {itemData.itemCode}</Text>
+                              <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>
+                                Price: ${ (typeof itemData.price === 'number' && !isNaN(itemData.price)) ? itemData.price.toFixed(2) : 'N/A' }
+                              </Text>
+                            </>
+                          ) : (
                             <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>
                               Price: ${ (typeof itemData.price === 'number' && !isNaN(itemData.price)) ? itemData.price.toFixed(2) : 'N/A' }
                             </Text>
-                          </>
-                        ) : (
-                          <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>
-                            Price: ${ (typeof itemData.price === 'number' && !isNaN(itemData.price)) ? itemData.price.toFixed(2) : 'N/A' }
-                          </Text>
-                        ))}
-                      </TouchableOpacity>
-                    );
-                  })}
-                  <TouchableOpacity
-                    style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]}
-                    onPress={showMenuManagementView}>
-                    <Text style={[styles.buttonText, { color: colors.text }]}>+ Add/Manage Items</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+                          ))}
+                        </TouchableOpacity>
+                      );
+                    })}
+                    <TouchableOpacity
+                      style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]}
+                      onPress={showMenuManagementView}>
+                      <Text style={[styles.buttonText, { color: colors.text }]}>+ Add/Manage Items</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
-              <Text style={[styles.subtitle, { color: colors.text }]}>Or Enter a Custom Item Name:</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-                placeholder="e.g., Custom Item Name"
-                placeholderTextColor={colors.logDetails}
-                value={customItemInput}
-                onChangeText={setCustomItemInput}
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Price:</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-                placeholder="e.g., 25.00"
-                placeholderTextColor={colors.logDetails}
-                keyboardType="numeric"
-                value={customItemPriceInput}
-                onChangeText={setCustomItemPriceInput}
-              />
-              <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleCustomItemSubmit}>
-                <Text style={[styles.buttonText, { color: colors.headerText }]}>Log Sale: {customItemInput || 'Custom Item'}</Text>
-              </TouchableOpacity>
+                <Text style={[styles.subtitle, { color: colors.text }]}>Or Enter a Custom Item Name (logs sale only, no menu/inventory impact):</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                  placeholder="e.g., Custom Item Name"
+                  placeholderTextColor={colors.logDetails}
+                  value={customItemInput}
+                  onChangeText={setCustomItemInput}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Price:</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                  placeholder="e.g., 25.00"
+                  placeholderTextColor={colors.logDetails}
+                  keyboardType="numeric"
+                  value={customItemPriceInput}
+                  onChangeText={setCustomItemPriceInput}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.actionButton,
+                    { backgroundColor: colors.buttonBgPrimary, opacity: customItemInput.trim() ? 1 : 0.5 }
+                  ]}
+                  onPress={customItemInput.trim() ? handleCustomItemSubmit : null}
+                  disabled={!customItemInput.trim()}
+                >
+                  <Text style={[styles.buttonText, { color: colors.headerText }]}>Log Sale: {customItemInput || 'Custom Item'}</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={() => {
-                if (selectedCategory === 'Other') {
-                  setSelectedCategory(null);
-                } else {
-                  setSelectedBrand(null);
-                }
-              }}>
-                <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back'}</Text>
-              </TouchableOpacity>
-            </ScrollView>
+                <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={() => {
+                  if (selectedCategory === 'Other') {
+                    setSelectedCategory(null);
+                  } else {
+                    setSelectedBrand(null);
+                  }
+                }}>
+                  <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back'}</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </KeyboardAvoidingView>
           ) : null}
         </>
       )}
@@ -1739,6 +1855,12 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
           <View style={styles.saleActionsContainer}>
             <TouchableOpacity style={[styles.endSaleButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleEndSale}>
               <Text style={[styles.buttonText, { color: colors.headerText }]}>Complete Sale: ${currentSaleTotal.toFixed(2)}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, marginBottom: 10 }]}
+              onPress={handleViewSaleItems}
+            >
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>View Sale Items</Text>
             </TouchableOpacity>
             <View style={styles.editCancelButtons}>
               <TouchableOpacity
@@ -1777,6 +1899,27 @@ const MainScreen = ({ addToLog, inventory, updateInventory, showLogView, showInv
         onGoBack={handleDiscountModalBack}
         onCancelSale={handleCancelSale} // Call MainScreen's handleCancelSale
         itemDetails={discountModalProps}
+        colors={colors}
+      />
+
+      {/* Custom Layaway Input Modal */}
+      <LayawayInputModal
+        isVisible={showLayawayInputModal}
+        onClose={() => setShowLayawayInputModal(false)}
+        onConfirmLayaway={({ customerName, customerPhone }) => {
+          if (layawayInputModalProps) {
+            handleLayawayItem(
+              layawayInputModalProps.category,
+              layawayInputModalProps.brand,
+              layawayInputModalProps.item,
+              layawayInputModalProps.originalPrice,
+              customerName,
+              customerPhone
+            );
+          }
+          setShowLayawayInputModal(false);
+        }}
+        itemDetails={layawayInputModalProps}
         colors={colors}
       />
     </View>
@@ -1937,55 +2080,60 @@ const InventoryManagementScreen = ({ inventory, updateInventory, addToLog, showM
         autoCapitalize="none"
         autoCorrect={false}
       />
-      <ScrollView style={[styles.inventoryListContainer, { backgroundColor: colors.cardBg }]}>
-        {filteredAndOrganizedInventory.length === 0 && (
-          <Text style={[styles.logEntryText, { color: colors.text }]}>No items in inventory yet or matching your search.</Text>
-        )}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView style={[styles.inventoryListContainer, { backgroundColor: colors.cardBg }]}>
+          {filteredAndOrganizedInventory.length === 0 && (
+            <Text style={[styles.logEntryText, { color: colors.text }]}>No items in inventory yet or matching your search.</Text>
+          )}
 
-        {filteredAndOrganizedInventory.map(categoryObj => (
-          <View key={categoryObj.name}>
-            <Text style={[styles.categoryHeader, { color: colors.text }]}>{categoryObj.name}</Text>
-            {categoryObj.brands.map(brandObj => (
-              <View key={`${categoryObj.name}-${brandObj.name}`}>
-                <Text style={[styles.brandHeader, { color: colors.text }]}>{brandObj.name}</Text>
-                {brandObj.items.map((item) => (
-                  <View key={item.itemCode} style={[styles.inventoryItem, { borderBottomColor: colors.logEntryBorder }]}>
-                    <View style={styles.inventoryItemDetails}>
-                      <Text style={[styles.inventoryItemText, { color: colors.text }]}>{item.item}</Text>
-                      <Text style={[styles.inventoryItemCode, { color: colors.logDetails }]}>Code: {item.itemCode}</Text>
-                      {item.lastChange && item.lastChangeDate && (
-                        <Text style={[styles.inventoryLastChange, { color: colors.logDetails }]}>Last: {item.lastChange} on {item.lastChangeDate}</Text>
-                      )}
-                    </View>
-                    <View style={styles.inventoryControls}>
-                      <TouchableOpacity style={[styles.inventoryButtonSmall, { backgroundColor: colors.buttonBgLight }]} onPress={() => handleAdjustQuantity(item.category, item.brand, item.item, -1)}>
-                        <Text style={[styles.buttonText, { color: colors.text }]}>-</Text>
-                      </TouchableOpacity>
-                      <TextInput
-                        style={[styles.inventoryInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-                        keyboardType="numeric"
-                        value={String(item.quantity)}
-                        onChangeText={(text) => handleManualQuantityChange(item.category, item.brand, item.item, text)}
-                      />
-                      <TouchableOpacity style={[styles.inventoryButtonSmall, { backgroundColor: colors.buttonBgLight }]} onPress={() => handleAdjustQuantity(item.category, item.brand, item.item, 1)}>
-                        <Text style={[styles.buttonText, { color: colors.text }]}>+</Text>
-                      </TouchableOpacity>
+          {filteredAndOrganizedInventory.map(categoryObj => (
+            <View key={categoryObj.name}>
+              <Text style={[styles.categoryHeader, { color: colors.text }]}>{categoryObj.name}</Text>
+              {categoryObj.brands.map(brandObj => (
+                <View key={`${categoryObj.name}-${brandObj.name}`}>
+                  <Text style={[styles.brandHeader, { color: colors.text }]}>{brandObj.name}</Text>
+                  {brandObj.items.map((item) => (
+                    <View key={item.itemCode} style={[styles.inventoryItem, { borderBottomColor: colors.logEntryBorder }]}>
+                      <View style={styles.inventoryItemDetails}>
+                        <Text style={[styles.inventoryItemText, { color: colors.text }]}>{item.item}</Text>
+                        <Text style={[styles.inventoryItemCode, { color: colors.logDetails }]}>Code: {item.itemCode}</Text>
+                        {item.lastChange && item.lastChangeDate && (
+                          <Text style={[styles.inventoryLastChange, { color: colors.logDetails }]}>Last: {item.lastChange} on {item.lastChangeDate}</Text>
+                        )}
+                      </View>
+                      <View style={styles.inventoryControls}>
+                        <TouchableOpacity style={[styles.inventoryButtonSmall, { backgroundColor: colors.buttonBgLight }]} onPress={() => handleAdjustQuantity(item.category, item.brand, item.item, -1)}>
+                          <Text style={[styles.buttonText, { color: colors.text }]}>-</Text>
+                        </TouchableOpacity>
+                        <TextInput
+                          style={[styles.inventoryInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                          keyboardType="numeric"
+                          value={String(item.quantity)}
+                          onChangeText={(text) => handleManualQuantityChange(item.category, item.brand, item.item, text)}
+                        />
+                        <TouchableOpacity style={[styles.inventoryButtonSmall, { backgroundColor: colors.buttonBgLight }]} onPress={() => handleAdjustQuantity(item.category, item.brand, item.item, 1)}>
+                          <Text style={[styles.buttonText, { color: colors.text }]}>+</Text>
+                        </TouchableOpacity>
 
-                      <Text style={[styles.priceLabel, { color: colors.text }]}>$</Text>
-                      <TextInput
-                        style={[styles.priceInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-                        keyboardType="numeric"
-                        value={item.price !== undefined ? String(item.price.toFixed(2)) : ''}
-                        onChangeText={(text) => handleManualPriceChange(item.category, item.brand, item.item, text)}
-                      />
+                        <Text style={[styles.priceLabel, { color: colors.text }]}>$</Text>
+                        <TextInput
+                          style={[styles.priceInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                          keyboardType="numeric"
+                          value={item.price !== undefined ? String(item.price.toFixed(2)) : ''}
+                          onChangeText={(text) => handleManualPriceChange(item.category, item.brand, item.item, text)}
+                        />
+                      </View>
                     </View>
-                  </View>
-                ))}
-              </View>
-            ))}
-          </View>
-        ))}
-      </ScrollView>
+                  ))}
+                </View>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+      </KeyboardAvoidingView>
       <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={showMainView}>
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Back to Main App</Text>
       </TouchableOpacity>
@@ -2398,163 +2546,168 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
   };
 
   return (
-    <ScrollView style={styles.contentContainer}>
-      <Text style={[styles.title, { color: colors.text }]}>Menu Management</Text>
-      {!isEditModeEnabled && (
-        <View style={[styles.editModeWarning, { backgroundColor: colors.warningBg, borderColor: colors.warningBorder }]}>
-          <Text style={[styles.editModeWarningText, { color: colors.warningText }]}>
-            Edit mode is currently disabled. Tap the <MaterialIcons name="lock" size={16} color={colors.warningText} /> icon in the top-left to enable editing.
-          </Text>
-        </View>
-      )}
-
-      <Text style={[styles.subtitle, { color: colors.text }]}>Manage Categories</Text>
-      <View style={[styles.currentListDisplay, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-        <Text style={[styles.currentListText, { color: colors.text }]}>Current Categories:</Text>
-        <View style={styles.listItemsContainer}>
-          {availableCategories.length > 0 ? (
-            availableCategories.map(cat => (
-              <View key={cat} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
-                <Text style={[styles.listItemText, { color: colors.text }]}>{cat}</Text>
-                {isEditModeEnabled && cat !== 'Other' && cat !== 'Clips, etc.' && (
-                  <TouchableOpacity onPress={() => handleDeleteCategory(cat)} style={[styles.deleteButton, { backgroundColor: colors.buttonBgDanger }]}>
-                    <MaterialIcons name="delete" size={20} color={colors.headerText} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))
-          ) : (
-            <Text style={[styles.listItemText, { color: colors.text }]}>No categories defined.</Text>
-          )}
-        </View>
-      </View>
-      {isEditModeEnabled && (
-        <>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-            placeholder="Add New Category"
-            placeholderTextColor={colors.logDetails}
-            value={newCategoryInput}
-            onChangeText={setNewCategoryInput}
-          />
-          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleAddCategory}>
-            <Text style={[styles.buttonText, { color: colors.headerText }]}>Add Category</Text>
-          </TouchableOpacity>
-        </>
-      )}
-
-      <Text style={[styles.subtitle, { color: colors.text }]}>Manage Brands</Text>
-      <View style={styles.pickerContainer}>
-        <Text style={[styles.pickerLabel, { color: colors.text }]}>Select Category for Brand:</Text>
-        <ScrollView horizontal={true} style={styles.horizontalPicker}>
-          {availableCategories.map(cat => (
-            <TouchableOpacity
-              key={cat}
-              style={[styles.pickerButton, { backgroundColor: colors.pickerBg }, selectedCategoryForBrand === cat && { backgroundColor: colors.pickerSelectedBg }]}
-              onPress={() => {
-                setSelectedCategoryForBrand(cat);
-                setSelectedBrandForItems(null);
-              }}>
-              <Text style={[styles.pickerButtonText, { color: colors.pickerText }, selectedCategoryForBrand === cat && { color: colors.pickerSelectedText }]}>{cat}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-      {selectedCategoryForBrand && (
-        <View style={[styles.currentListDisplay, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-          <Text style={[styles.currentListText, { color: colors.text }]}>Current Brands in {selectedCategoryForBrand}:</Text>
-          <View style={styles.listItemsContainer}>
-            {menuData.categories.find(c => c.name === selectedCategoryForBrand)?.brands.map(brandObj => (
-              <View key={brandObj.name} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
-                <Text style={[styles.listItemText, { color: colors.text }]}>{brandObj.name}</Text>
-                {isEditModeEnabled && !(selectedCategoryForBrand === 'Clips, etc.' && brandObj.name === 'Fixed Prices') && !(selectedCategoryForBrand === 'Other' && brandObj.name === 'Custom') && (
-                  <TouchableOpacity onPress={() => handleDeleteBrand(selectedCategoryForBrand, brandObj.name)} style={[styles.deleteButton, { backgroundColor: colors.buttonBgDanger }]}>
-                    <MaterialIcons name="delete" size={20} color={colors.headerText} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+    >
+      <ScrollView style={styles.contentContainer}>
+        <Text style={[styles.title, { color: colors.text }]}>Menu Management</Text>
+        {!isEditModeEnabled && (
+          <View style={[styles.editModeWarning, { backgroundColor: colors.warningBg, borderColor: colors.warningBorder }]}>
+            <Text style={[styles.editModeWarningText, { color: colors.warningText }]}>
+              Edit mode is currently disabled. Tap the <MaterialIcons name="lock" size={16} color={colors.warningText} /> icon in the top-left to enable editing.
+            </Text>
           </View>
-        </View>
-      )}
-      {isEditModeEnabled && selectedCategoryForBrand && (
-        <>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-            placeholder="Add New Brand"
-            placeholderTextColor={colors.logDetails}
-            value={newBrandInput}
-            onChangeText={setNewBrandInput}
-          />
-          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleAddBrand}>
-            <Text style={[styles.buttonText, { color: colors.headerText }]}>Add Brand to {selectedCategoryForBrand}</Text>
-          </TouchableOpacity>
-        </>
-      )}
+        )}
 
-      <Text style={[styles.subtitle, { color: colors.text }]}>Manage Items</Text>
-      <View style={styles.pickerContainer}>
-        <Text style={[styles.pickerLabel, { color: colors.text }]}>Select Brand for Items:</Text>
-        <ScrollView horizontal={true} style={styles.horizontalPicker}>
-          {availableBrandsForSelectedCategory.map(brand => (
-            <TouchableOpacity
-              key={brand}
-              style={[styles.pickerButton, { backgroundColor: colors.pickerBg }, selectedBrandForItems === brand && { backgroundColor: colors.pickerSelectedBg }]}
-              onPress={() => setSelectedBrandForItems(brand)}>
-              <Text style={[styles.pickerButtonText, { color: colors.pickerText }, selectedBrandForItems === brand && { color: colors.pickerSelectedText }]}>{brand}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-      {selectedCategoryForBrand && selectedBrandForItems && (
+        <Text style={[styles.subtitle, { color: colors.text }]}>Manage Categories</Text>
         <View style={[styles.currentListDisplay, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-          <Text style={[styles.currentListText, { color: colors.text }]}>Current Items in {selectedBrandForItems}:</Text>
+          <Text style={[styles.currentListText, { color: colors.text }]}>Current Categories:</Text>
           <View style={styles.listItemsContainer}>
-            {menuData.categories.find(c => c.name === selectedCategoryForBrand)?.brands.find(b => b.name === selectedBrandForItems)?.items.length > 0 ? (
-              menuData.categories.find(c => c.name === selectedCategoryForBrand)?.brands.find(b => b.name === selectedBrandForItems)?.items.map(itemObj => (
-                <View key={itemObj.name} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
-                  <Text style={[styles.listItemText, { color: colors.text }]}>{itemObj.name} (${itemObj.price.toFixed(2)})</Text>
-                  {isEditModeEnabled && !(selectedCategoryForBrand === 'Clips, etc.' && selectedBrandForItems === 'Fixed Prices') && !(selectedCategoryForBrand === 'Other' && selectedBrandForItems === 'Custom') && (
-                    <TouchableOpacity onPress={() => handleDeleteItem(selectedCategoryForBrand, selectedBrandForItems, itemObj.name)} style={[styles.deleteButton, { backgroundColor: colors.buttonBgDanger }]}>
+            {availableCategories.length > 0 ? (
+              availableCategories.map(cat => (
+                <View key={cat} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
+                  <Text style={[styles.listItemText, { color: colors.text }]}>{cat}</Text>
+                  {isEditModeEnabled && cat !== 'Other' && cat !== 'Clips, etc.' && (
+                    <TouchableOpacity onPress={() => handleDeleteCategory(cat)} style={[styles.deleteButton, { backgroundColor: colors.buttonBgDanger }]}>
                       <MaterialIcons name="delete" size={20} color={colors.headerText} />
                     </TouchableOpacity>
                   )}
                 </View>
               ))
             ) : (
-              <Text style={[styles.listItemText, { color: colors.text }]}>No items in this brand.</Text>
+              <Text style={[styles.listItemText, { color: colors.text }]}>No categories defined.</Text>
             )}
           </View>
         </View>
-      )}
-      {isEditModeEnabled && selectedCategoryForBrand && selectedBrandForItems && (
-        <>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-            placeholder="Add New Item Name"
-            placeholderTextColor={colors.logDetails}
-            value={newItemInput}
-            onChangeText={setNewItemInput}
-          />
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-            placeholder="Initial Price (e.g., 25.00)"
-            placeholderTextColor={colors.logDetails}
-            keyboardType="numeric"
-            value={newItemPriceInput}
-            onChangeText={setNewItemPriceInput}
-          />
-          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleAddItem}>
-            <Text style={[styles.buttonText, { color: colors.headerText }]}>Add Item to {selectedBrandForItems}</Text>
-          </TouchableOpacity>
-        </>
-      )}
+        {isEditModeEnabled && (
+          <>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+              placeholder="Add New Category"
+              placeholderTextColor={colors.logDetails}
+              value={newCategoryInput}
+              onChangeText={setNewCategoryInput}
+            />
+            <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleAddCategory}>
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Add Category</Text>
+            </TouchableOpacity>
+          </>
+        )}
 
-      <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showMainView}>
-        <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Main App'}</Text>
-      </TouchableOpacity>
-      <View style={styles.bottomBuffer} />
-    </ScrollView>
+        <Text style={[styles.subtitle, { color: colors.text }]}>Manage Brands</Text>
+        <View style={styles.pickerContainer}>
+          <Text style={[styles.pickerLabel, { color: colors.text }]}>Select Category for Brand:</Text>
+          <ScrollView horizontal={true} style={styles.horizontalPicker}>
+            {availableCategories.map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[styles.pickerButton, { backgroundColor: colors.pickerBg }, selectedCategoryForBrand === cat && { backgroundColor: colors.pickerSelectedBg }]}
+                onPress={() => {
+                  setSelectedCategoryForBrand(cat);
+                  setSelectedBrandForItems(null);
+                }}>
+                <Text style={[styles.pickerButtonText, { color: colors.pickerText }, selectedCategoryForBrand === cat && { color: colors.pickerSelectedText }]}>{cat}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+        {selectedCategoryForBrand && (
+          <View style={[styles.currentListDisplay, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+            <Text style={[styles.currentListText, { color: colors.text }]}>Current Brands in {selectedCategoryForBrand}:</Text>
+            <View style={styles.listItemsContainer}>
+              {menuData.categories.find(c => c.name === selectedCategoryForBrand)?.brands.map(brandObj => (
+                <View key={brandObj.name} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
+                  <Text style={[styles.listItemText, { color: colors.text }]}>{brandObj.name}</Text>
+                  {isEditModeEnabled && !(selectedCategoryForBrand === 'Clips, etc.' && brandObj.name === 'Fixed Prices') && !(selectedCategoryForBrand === 'Other' && brandObj.name === 'Custom') && (
+                    <TouchableOpacity onPress={() => handleDeleteBrand(selectedCategoryForBrand, brandObj.name)} style={[styles.deleteButton, { backgroundColor: colors.buttonBgDanger }]}>
+                      <MaterialIcons name="delete" size={20} color={colors.headerText} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+        {isEditModeEnabled && selectedCategoryForBrand && (
+          <>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+              placeholder="Add New Brand"
+              placeholderTextColor={colors.logDetails}
+              value={newBrandInput}
+              onChangeText={setNewBrandInput}
+            />
+            <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleAddBrand}>
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Add Brand to {selectedCategoryForBrand}</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        <Text style={[styles.subtitle, { color: colors.text }]}>Manage Items</Text>
+        <View style={styles.pickerContainer}>
+          <Text style={[styles.pickerLabel, { color: colors.text }]}>Select Brand for Items:</Text>
+          <ScrollView horizontal={true} style={styles.horizontalPicker}>
+            {availableBrandsForSelectedCategory.map(brand => (
+              <TouchableOpacity
+                key={brand}
+                style={[styles.pickerButton, { backgroundColor: colors.pickerBg }, selectedBrandForItems === brand && { backgroundColor: colors.pickerSelectedBg }]}
+                onPress={() => setSelectedBrandForItems(brand)}>
+                <Text style={[styles.pickerButtonText, { color: colors.pickerText }, selectedBrandForItems === brand && { color: colors.pickerSelectedText }]}>{brand}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+        {selectedCategoryForBrand && selectedBrandForItems && (
+          <View style={[styles.currentListDisplay, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+            <Text style={[styles.currentListText, { color: colors.text }]}>Current Items in {selectedBrandForItems}:</Text>
+            <View style={styles.listItemsContainer}>
+              {menuData.categories.find(c => c.name === selectedCategoryForBrand)?.brands.find(b => b.name === selectedBrandForItems)?.items.length > 0 ? (
+                menuData.categories.find(c => c.name === selectedCategoryForBrand)?.brands.find(b => b.name === selectedBrandForItems)?.items.map(itemObj => (
+                  <View key={itemObj.name} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
+                    <Text style={[styles.listItemText, { color: colors.text }]}>{itemObj.name} (${itemObj.price.toFixed(2)})</Text>
+                    {isEditModeEnabled && !(selectedCategoryForBrand === 'Clips, etc.' && selectedBrandForItems === 'Fixed Prices') && !(selectedCategoryForBrand === 'Other' && selectedBrandForItems === 'Custom') && (
+                      <TouchableOpacity onPress={() => handleDeleteItem(selectedCategoryForBrand, selectedBrandForItems, itemObj.name)} style={[styles.deleteButton, { backgroundColor: colors.buttonBgDanger }]}>
+                        <MaterialIcons name="delete" size={20} color={colors.headerText} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))
+              ) : (
+                <Text style={[styles.listItemText, { color: colors.text }]}>No items in this brand.</Text>
+              )}
+            </View>
+          </View>
+        )}
+        {isEditModeEnabled && selectedCategoryForBrand && selectedBrandForItems && (
+          <>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+              placeholder="Add New Item Name"
+              placeholderTextColor={colors.logDetails}
+              value={newItemInput}
+              onChangeText={setNewItemInput}
+            />
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+              placeholder="Initial Price (e.g., 25.00)"
+              placeholderTextColor={colors.logDetails}
+              keyboardType="numeric"
+              value={newItemPriceInput}
+              onChangeText={setNewItemPriceInput}
+            />
+            <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleAddItem}>
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Add Item to {selectedBrandForItems}</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showMainView}>
+          <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Main App'}</Text>
+        </TouchableOpacity>
+        <View style={styles.bottomBuffer} />
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -2613,17 +2766,22 @@ const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashi
       </View>
 
       <Text style={[styles.subtitle, { color: colors.text }]}>Set Cashier Number</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-        placeholder="Enter Cashier Number"
-        placeholderTextColor={colors.logDetails}
-        keyboardType="numeric"
-        value={cashierNumber}
-        onChangeText={setCashierNumber}
-      />
-      <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleSetCashierNumber}>
-        <Text style={[styles.buttonText, { color: colors.headerText }]}>Set Cashier: {cashierNumber}</Text>
-      </TouchableOpacity>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+          placeholder="Enter Cashier Number"
+          placeholderTextColor={colors.logDetails}
+          keyboardType="numeric"
+          value={cashierNumber}
+          onChangeText={setCashierNumber}
+        />
+        <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleSetCashierNumber}>
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>Set Cashier: {cashierNumber}</Text>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
 
       <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, marginTop: 20 }]} onPress={showMenuManagementView}>
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Go to Menu Management</Text>
@@ -2809,57 +2967,64 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, i
   return (
     <View style={styles.contentContainer}>
       <Text style={[styles.title, { color: colors.text }]}>Layaway Management</Text>
-      <ScrollView style={[styles.layawayListContainer, { backgroundColor: colors.cardBg }]}>
-        {layawayItems.length === 0 ? (
-          <Text style={[styles.logEntryText, { color: colors.text }]}>No items currently on layaway.</Text>
-        ) : (
-          layawayItems.map(item => (
-            <View key={item.layawayId} style={[styles.layawayItemCard, { borderBottomColor: colors.logEntryBorder }]}>
-              <Text style={[styles.layawayItemText, { color: colors.text }]}>
-                {item.item} ({item.category} > {item.brand})
-              </Text>
-              <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Code: {item.itemCode}</Text>
-              <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Original Price: ${item.originalPrice.toFixed(2)}</Text>
-              <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Amount Paid: ${item.amountPaid.toFixed(2)}</Text>
-              <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Remaining Balance: ${item.remainingBalance.toFixed(2)}</Text>
-              <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Layaway Date: {item.layawayDate}</Text>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView style={[styles.layawayListContainer, { backgroundColor: colors.cardBg }]}>
+          {layawayItems.length === 0 ? (
+            <Text style={[styles.logEntryText, { color: colors.text }]}>No items currently on layaway.</Text>
+          ) : (
+            layawayItems.map(item => (
+              <View key={item.layawayId} style={[styles.layawayItemCard, { borderBottomColor: colors.logEntryBorder }]}>
+                <Text style={[styles.layawayItemText, { color: colors.text }]}>
+                  {item.item} ({item.category} > {item.brand})
+                </Text>
+                <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Code: {item.itemCode}</Text>
+                {item.customerName ? <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Customer: {item.customerName}</Text> : null}
+                {item.customerPhone ? <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Phone: {item.customerPhone}</Text> : null}
+                <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Original Price: ${item.originalPrice.toFixed(2)}</Text>
+                <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Amount Paid: ${item.amountPaid.toFixed(2)}</Text>
+                <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Remaining Balance: ${item.remainingBalance.toFixed(2)}</Text>
+                <Text style={[styles.layawayDetailsText, { color: colors.logDetails }]}>Layaway Date: {item.layawayDate}</Text>
 
-              <View style={styles.layawayPaymentControls}>
-                <TextInput
-                  style={[styles.layawayPaymentInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-                  placeholder="Payment Amount ($)"
-                  placeholderTextColor={colors.logDetails}
-                  keyboardType="numeric"
-                  value={paymentInputs[item.layawayId]}
-                  onChangeText={(text) => handlePaymentInputChange(item.layawayId, text)}
-                />
-                <TouchableOpacity
-                  style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgPrimary }]}
-                  onPress={() => handleApplyPayment(item)}
-                >
-                  <Text style={[styles.buttonText, { color: colors.headerText }]}>Apply Payment</Text>
-                </TouchableOpacity>
-              </View>
+                <View style={styles.layawayPaymentControls}>
+                  <TextInput
+                    style={[styles.layawayPaymentInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                    placeholder="Payment Amount ($)"
+                    placeholderTextColor={colors.logDetails}
+                    keyboardType="numeric"
+                    value={paymentInputs[item.layawayId]}
+                    onChangeText={(text) => handlePaymentInputChange(item.layawayId, text)}
+                  />
+                  <TouchableOpacity
+                    style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgPrimary }]}
+                    onPress={() => handleApplyPayment(item)}
+                  >
+                    <Text style={[styles.buttonText, { color: colors.headerText }]}>Apply Payment</Text>
+                  </TouchableOpacity>
+                </View>
 
-              <View style={styles.layawayActionButtons}>
-                <TouchableOpacity
-                  style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgSecondary }]}
-                  onPress={() => handleCompleteLayaway(item)}
-                  disabled={item.remainingBalance > 0}
-                >
-                  <Text style={[styles.buttonText, { color: colors.headerText }]}>Complete Layaway</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgDanger }]}
-                  onPress={() => handleCancelLayaway(item)}
-                >
-                  <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel Layaway</Text>
-                </TouchableOpacity>
+                <View style={styles.layawayActionButtons}>
+                  <TouchableOpacity
+                    style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgSecondary }]}
+                    onPress={() => handleCompleteLayaway(item)}
+                    disabled={item.remainingBalance > 0}
+                  >
+                    <Text style={[styles.buttonText, { color: colors.headerText }]}>Complete Layaway</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgDanger }]}
+                    onPress={() => handleCancelLayaway(item)}
+                  >
+                    <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel Layaway</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          ))
-        )}
-      </ScrollView>
+            ))
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
       <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={showMainView}>
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Back to Main App</Text>
       </TouchableOpacity>
