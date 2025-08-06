@@ -787,8 +787,13 @@ const App = () => {
           <MaterialIcons name={isEditModeEnabled ? "lock-open" : "lock"} size={24} color={colors.headerText} />
         </TouchableOpacity>
         <Text style={[styles.headerText, { color: colors.headerText }]}>LeGrande Accents</Text>
-        <TouchableOpacity style={[styles.devButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showDevelopmentView}>
-          <Text style={[styles.devButtonText, { color: colors.headerText }]}>Dev</Text>
+        <TouchableOpacity
+          style={[styles.devButton, { backgroundColor: colors.buttonBgSecondary }]}
+          onPress={currentView === 'development' ? showMainView : showDevelopmentView}
+        >
+          <Text style={[styles.devButtonText, { color: colors.headerText }]}>
+            {currentView === 'development' ? 'Main' : 'Dev'}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -2330,10 +2335,10 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
       {/* Buttons side-by-side */}
       <View style={styles.inventoryManagementButtonsContainer}>
         <TouchableOpacity
-          style={[styles.actionButton, styles.inventoryManagementButton, { backgroundColor: colors.buttonBgTertiary }]}
+          style={[styles.actionButton, styles.inventoryManagementButton, styles.graphButton, { backgroundColor: colors.buttonBgTertiary }]}
           onPress={() => setShowInventoryGraphModal(true)}
         >
-          <Text style={[styles.buttonText, { color: colors.headerText }]}>View Inventory Graph</Text>
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>View Graph</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.actionButton, styles.inventoryManagementButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={showMainView}>
           <Text style={[styles.buttonText, { color: colors.headerText }]}>Back to Main App</Text>
@@ -3924,6 +3929,10 @@ const styles = StyleSheet.create({
   inventoryManagementButton: {
     flex: 1,
     marginHorizontal: 5,
+  },
+  // New style for the 'View Graph' button to shrink it vertically
+  graphButton: {
+    paddingVertical: 10, // Reduced padding
   }
 });
 
