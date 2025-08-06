@@ -1388,7 +1388,7 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
         lastChangeDate: lastChangeDate
       }, inventory); // Pass current inventory to updateInventoryState
       setInventory(updatedInventory);
-      await saveInventory(updatedInventory); // Await the save
+      // Removed: await saveInventory(updatedInventory); // Await the save
       addToLog("Sold Item", itemData.itemCode, category, brand, item, quantityChange, newQuantity, priceSold, discountApplied);
     } else {
       const itemCode = itemData.itemCode || generateUniqueItemCode(category, brand, item);
@@ -1465,7 +1465,7 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
         lastChangeDate: lastChangeDate
       }, inventory);
       setInventory(updatedInventory);
-      await saveInventory(updatedInventory); // Await the save
+      // REMOVED: await saveInventory(updatedInventory); // Await the save
       addToLog("Layaway Started", itemData.itemCode, category, brand, item, quantityChange, newQuantity, downPayment, '30% Down');
     } else {
       addToLog("Layaway Started (No Inventory Track)", itemData.itemCode, item.category, item.brand, item.item, 'N/A', 'N/A', downPayment, '30% Down');
@@ -1535,14 +1535,15 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
     );
   };
 
-  const handleEndSale = () => {
+  const handleEndSale = async () => { // Made async
     Alert.alert(
       "Sale Complete",
       `Total for this sale: $${currentSaleTotal.toFixed(2)}`,
-      [{ text: "OK", onPress: () => {
+      [{ text: "OK", onPress: async () => { // Made async
         setLastCompletedSaleTotal(currentSaleTotal);
         setCurrentSaleTotal(0);
         setCurrentSaleItems([]);
+        await saveInventory(inventory); // Save inventory when sale is completed
       } }]
     );
   };
@@ -1996,9 +1997,109 @@ const LogScreen = ({ log, showMainView, showFileManagementView, colors, lastComp
   );
 };
 
+// --- Simple Bar Chart Component ---
+const SimpleBarChart = ({ data, maxValue, colors }) => {
+  const maxBarHeight = 150; // Max height for a bar in pixels
+
+  return (
+    <View style={styles.chartContainer}>
+      {data.length === 0 ? (
+        <Text style={[styles.chartNoDataText, { color: colors.text }]}>No inventory data to display for categories.</Text>
+      ) : (
+        data.map((point, index) => (
+          <View key={index} style={styles.barWrapper}>
+            <Text style={[styles.barValue, { color: colors.text }]}>{point.value}</Text>
+            <View
+              style={[
+                styles.bar,
+                {
+                  height: (point.value / maxValue) * maxBarHeight,
+                  backgroundColor: colors.buttonBgPrimary,
+                },
+              ]}
+            />
+            <Text style={[styles.barLabel, { color: colors.text }]}>{point.label}</Text>
+          </View>
+        ))
+      )}
+    </View>
+  );
+};
+
+// --- Simple Bar Chart Modal Component ---
+const SimpleBarChartModal = ({ isVisible, onClose, data, maxValue, colors }) => {
+  return (
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={isVisible}
+      onRequestClose={onClose}
+    >
+      <View style={styles.centeredView}>
+        <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Inventory Overview (Quantity by Category)</Text>
+          <ScrollView horizontal contentContainerStyle={styles.chartScrollViewContent}>
+            <SimpleBarChart data={data} maxValue={maxValue} colors={colors} />
+          </ScrollView>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.buttonBgSecondary, marginTop: 20 }]}
+            onPress={onClose}
+          >
+            <Text style={[styles.buttonText, { color: colors.headerText }]}>Close Chart</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+
 // --- Inventory Management Screen Component ---
 const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, showMainView, menuData, colors, setInventory, saveInventory }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [inventoryGraphData, setInventoryGraphData] = useState([]);
+  const [maxInventoryValue, setMaxInventoryValue] = useState(1);
+  const [showInventoryGraphModal, setShowInventoryGraphModal] = useState(false);
+
+  useEffect(() => {
+    const aggregateData = () => {
+      const categoryQuantities = {};
+      let currentMax = 0;
+
+      menuData.categories.forEach(categoryObj => {
+        if (categoryObj.name !== 'Clips, etc.' && categoryObj.name !== 'Other') {
+          let totalQuantity = 0;
+          if (inventory[categoryObj.name]) {
+            for (const brandName in inventory[categoryObj.name]) {
+              for (const itemName in inventory[categoryObj.name][brandName]) {
+                const itemData = inventory[categoryObj.name][brandName][itemName];
+                if (typeof itemData.quantity === 'number' && !isNaN(itemData.quantity)) {
+                  totalQuantity += itemData.quantity;
+                }
+              }
+            }
+          }
+          categoryQuantities[categoryObj.name] = totalQuantity;
+          if (totalQuantity > currentMax) {
+            currentMax = totalQuantity;
+          }
+        }
+      });
+
+      const dataForChart = Object.keys(categoryQuantities)
+        .map(categoryName => ({
+          label: categoryName,
+          value: categoryQuantities[categoryName]
+        }))
+        .sort((a, b) => b.value - a.value); // Sort descending by value
+
+      setInventoryGraphData(dataForChart);
+      setMaxInventoryValue(currentMax > 0 ? currentMax : 1); // Ensure max is at least 1 to avoid division by zero
+    };
+
+    aggregateData();
+  }, [inventory, menuData]); // Re-run when inventory or menuData changes
+
 
   const handleAdjustQuantity = async (category, brand, item, adjustment) => { // Made async
     const itemData = inventory[category]?.[brand]?.[item];
@@ -2164,10 +2265,24 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
           ))}
         </ScrollView>
       </KeyboardAvoidingView>
+      <TouchableOpacity
+        style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, marginBottom: 10 }]}
+        onPress={() => setShowInventoryGraphModal(true)}
+      >
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>View Inventory Graph</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={showMainView}>
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Back to Main App</Text>
       </TouchableOpacity>
       <View style={styles.bottomBuffer} />
+
+      <SimpleBarChartModal
+        isVisible={showInventoryGraphModal}
+        onClose={() => setShowInventoryGraphModal(false)}
+        data={inventoryGraphData}
+        maxValue={maxInventoryValue}
+        colors={colors}
+      />
     </View>
   );
 };
@@ -2529,7 +2644,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
       "Confirm Deletion",
       `Are you sure you want to delete item "${itemName}" from "${categoryName} - ${brandName}"? This cannot be undone.`,
       [
-        { text: "Cancel", style: "cancel" },
+        { text: "Cancel", "style": "cancel" },
         {
           text: "Delete",
           onPress: async () => { // Made async
@@ -3697,6 +3812,40 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 10,
   },
+  chartContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    minHeight: 200, // Ensure minimum height for chart
+  },
+  barWrapper: {
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
+  bar: {
+    width: 30,
+    borderRadius: 5,
+  },
+  barValue: {
+    fontSize: 12,
+    marginBottom: 5,
+    fontWeight: 'bold',
+  },
+  barLabel: {
+    fontSize: 10,
+    marginTop: 5,
+    textAlign: 'center',
+    maxWidth: 60, // Limit width to prevent overflow
+  },
+  chartScrollViewContent: {
+    alignItems: 'flex-end', // Align bars to bottom
+  },
+  chartNoDataText: {
+    fontSize: 16,
+    textAlign: 'center',
+    padding: 20,
+  }
 });
 
 export default App;
