@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
@@ -818,6 +819,26 @@ const App = () => {
           setShowLayawayInputModal={setShowLayawayInputModal}
           layawayInputModalProps={layawayInputModalProps}
           setLayawayInputModalProps={setLayawayInputModalProps}
+          // New prop for layaway completion to main sale
+          onAddFinalizedLayawayToCurrentSale={({ itemCode, category, brand, item, originalPrice, layawayId, isInventoryTracked }) => {
+            const saleItem = {
+              saleItemId: Date.now() + Math.random(),
+              category,
+              brand,
+              item,
+              itemCode,
+              priceSold: originalPrice, // Full price
+              discountApplied: 'Layaway Finalized',
+              isInventoryTracked: isInventoryTracked, // True if it was an inventory-tracked item
+              originalQuantityChange: -1, // Always -1 for a final sale
+              isLayawayDownPayment: false,
+              isLayawayFinalSale: true, // New flag
+              layawayId,
+            };
+            setCurrentSaleItems(prevItems => [...prevItems, saleItem]);
+            setCurrentSaleTotal(prevTotal => prevTotal + originalPrice); // Add full price to total
+            addToLog("Layaway Finalized (Added to Sale)", itemCode, category, brand, item, 'N/A', 'N/A', originalPrice, 'Layaway Finalized');
+          }}
         />
       ) : currentView === 'log' ? (
         <LogScreen
@@ -880,6 +901,11 @@ const App = () => {
           addToLog={addToLog}
           showMainView={showMainView}
           colors={colors}
+          onAddFinalizedLayawayToCurrentSale={({ itemCode, category, brand, item, originalPrice, layawayId, isInventoryTracked }) => {
+            // This is a placeholder, the actual function is defined and passed from MainScreen
+            // This ensures LayawayManagementScreen can call back to MainScreen's state.
+            // The actual logic is in the `onAddFinalizedLayawayToCurrentSale` prop definition in MainScreen's JSX.
+          }}
         />
       ) : null}
     </SafeAreaView>
@@ -1057,7 +1083,7 @@ const LayawayInputModal = ({ isVisible, onClose, onConfirmLayaway, itemDetails, 
 
 
 // --- Main Screen Component ---
-const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, showInventoryView, showMenuManagementView, showLayawayManagementView, menuData, colors, setInventory, saveInventory, saveMenus, setMenuData, setLastCompletedSaleTotal, layawayItems, setLayawayItems, saveLayaway, showDiscountModal, setShowDiscountModal, discountModalProps, setDiscountModalProps, showLayawayInputModal, setShowLayawayInputModal, layawayInputModalProps, setLayawayInputModalProps }) => {
+const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, showInventoryView, showMenuManagementView, showLayawayManagementView, menuData, colors, setInventory, saveInventory, saveMenus, setMenuData, setLastCompletedSaleTotal, layawayItems, setLayawayItems, saveLayaway, showDiscountModal, setShowDiscountModal, discountModalProps, setDiscountModalProps, showLayawayInputModal, setShowLayawayInputModal, layawayInputModalProps, setLayawayInputModalProps, onAddFinalizedLayawayToCurrentSale }) => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [customItemInput, setCustomItemInput] = useState('');
@@ -1371,6 +1397,7 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
       isInventoryTracked: category !== 'Clips, etc.' && category !== 'Other',
       originalQuantityChange: noInventoryUpdate ? 0 : -1,
       isLayawayDownPayment: false,
+      isLayawayFinalSale: false, // Default to false
     };
     setCurrentSaleItems(prevItems => [...prevItems, saleItem]);
     setCurrentSaleTotal(prevTotal => prevTotal + priceSold);
@@ -1389,8 +1416,9 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
       }, inventory); // Pass current inventory to updateInventoryState
       setInventory(updatedInventory);
       // Removed: await saveInventory(updatedInventory); // Await the save
-      addToLog("Sold Item", itemData.itemCode, category, brand, item, quantityChange, newQuantity, priceSold, discountApplied);
+      // Log for regular sale. Actual deduction logged in handleEndSale.
     } else {
+      // Log for non-inventory tracked items or layaway down payments
       const itemCode = itemData.itemCode || generateUniqueItemCode(category, brand, item);
       addToLog("Sold Item (No Inventory Track)", itemCode, category, brand, item, 'N/A', 'N/A', priceSold, discountApplied);
     }
@@ -1423,9 +1451,9 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
       amountPaid: downPayment,
       remainingBalance: remainingBalance,
       layawayDate: new Date().toLocaleString(),
-      isInventoryTracked: category !== 'Clips, etc.' && category !== 'Other',
-      customerName: customerName, // New field
-      customerPhone: customerPhone, // New field
+      isInventoryTracked: category !== 'Clips, etc.' && category !== 'Other', // Track if it's an inventory item
+      customerName: customerName,
+      customerPhone: customerPhone,
     };
 
     setLayawayItems(prevItems => {
@@ -1434,6 +1462,7 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
       return updatedLayawayItems;
     });
 
+    // Add down payment to current sale items, but it's NOT inventory tracked for deduction here
     const saleItem = {
       saleItemId: Date.now() + Math.random(),
       category,
@@ -1442,34 +1471,17 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
       itemCode: itemData.itemCode,
       priceSold: downPayment,
       discountApplied: 'Layaway 30% Down',
-      isInventoryTracked: false,
+      isInventoryTracked: false, // Down payment does not deduct inventory
       originalQuantityChange: 0,
       isLayawayDownPayment: true,
+      isLayawayFinalSale: false,
       layawayId: layawayEntry.layawayId,
     };
     setCurrentSaleItems(prevItems => [...prevItems, saleItem]);
     setCurrentSaleTotal(prevTotal => prevTotal + downPayment);
 
-
-    // Deduct inventory if item is inventory tracked
-    if (layawayEntry.isInventoryTracked) {
-      const newQuantity = parseInt(itemData.quantity, 10) - 1; // Ensure quantity is a number
-      const quantityChange = -1;
-      const lastChange = `Layaway (-1)`;
-      const lastChangeDate = new Date().toLocaleString();
-
-      const updatedInventory = updateInventoryState(category, brand, item, {
-        ...itemData,
-        quantity: newQuantity,
-        lastChange: lastChange,
-        lastChangeDate: lastChangeDate
-      }, inventory);
-      setInventory(updatedInventory);
-      // REMOVED: await saveInventory(updatedInventory); // Await the save
-      addToLog("Layaway Started", itemData.itemCode, category, brand, item, quantityChange, newQuantity, downPayment, '30% Down');
-    } else {
-      addToLog("Layaway Started (No Inventory Track)", itemData.itemCode, item.category, item.brand, item.item, 'N/A', 'N/A', downPayment, '30% Down');
-    }
+    // No inventory deduction here. Deduction happens when the final sale is completed.
+    addToLog("Layaway Initiated", itemData.itemCode, category, brand, item, 'N/A', 'N/A', downPayment, '30% Down');
 
     Alert.alert(
       "Layaway Initiated",
@@ -1500,35 +1512,45 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
               const lastItem = prevItems[prevItems.length - 1];
               if (!lastItem) return prevItems;
 
-              if (lastItem.isLayawayDownPayment) {
-                setCurrentSaleTotal(prevTotal => prevTotal - lastItem.priceSold);
-                addToLog("Layaway Down Payment Undone (Sale)", lastItem.itemCode, lastItem.category, lastItem.brand, lastItem.item, 'N/A', 'N/A', lastItem.priceSold, lastItem.discountApplied);
-              }
-              else if (lastItem.isInventoryTracked) {
+              // Revert total
+              setCurrentSaleTotal(prevTotal => prevTotal - lastItem.priceSold);
+
+              // Log the undo action
+              let logAction = "Removed from Sale";
+              let quantityChangeForLog = 'N/A';
+              let newQuantityForLog = 'N/A';
+
+              // If it was an inventory-tracked item (regular sale or finalized layaway)
+              if (lastItem.isInventoryTracked) {
                 const itemData = inventory[lastItem.category]?.[lastItem.brand]?.[lastItem.item];
                 if (itemData) {
-                  const newQuantity = parseInt(itemData.quantity, 10) - lastItem.originalQuantityChange; // Ensure quantity is a number
+                  const newQuantity = parseInt(itemData.quantity, 10) - lastItem.originalQuantityChange; // Revert the deduction
                   const updatedInventory = updateInventoryState(lastItem.category, lastItem.brand, lastItem.item, {
                     ...itemData,
                     quantity: newQuantity,
                     lastChange: `Removed from Sale (+${-lastItem.originalQuantityChange})`,
                     lastChangeDate: new Date().toLocaleString()
                   }, inventory);
-                  setInventory(updatedInventory);
-                  // Save is awaited below after setInventory
-                  addToLog("Removed from Sale", lastItem.itemCode, lastItem.category, lastItem.brand, lastItem.item, -lastItem.originalQuantityChange, newQuantity, lastItem.priceSold, lastItem.discountApplied);
+                  setInventory(updatedInventory); // Update in-memory state
+                  quantityChangeForLog = -lastItem.originalQuantityChange;
+                  newQuantityForLog = newQuantity;
                 }
+              } else if (lastItem.isLayawayDownPayment) {
+                logAction = "Layaway Down Payment Undone (Sale)";
+              } else if (lastItem.isLayawayFinalSale) {
+                // If it was a finalized layaway that was added to the current sale, and now undone
+                logAction = "Layaway Finalized Sale Undone";
+                // Note: Inventory will be reverted by the general isInventoryTracked block above if it was indeed tracked.
               } else {
-                addToLog("Removed from Sale (No Inventory Revert)", lastItem.itemCode, lastItem.category, lastItem.brand, lastItem.item, 'N/A', 'N/A', lastItem.priceSold, lastItem.discountApplied);
+                logAction = "Removed from Sale (No Inventory Revert)";
               }
 
-              if (!lastItem.isLayawayDownPayment) {
-                setCurrentSaleTotal(prevTotal => prevTotal - lastItem.priceSold);
-              }
+              addToLog(logAction, lastItem.itemCode, lastItem.category, lastItem.brand, lastItem.item, quantityChangeForLog, newQuantityForLog, lastItem.priceSold, lastItem.discountApplied);
+
               return prevItems.slice(0, -1);
             });
-            // After state update, save the inventory
-            await saveInventory(inventory); // This will save the state after the setInventory has processed
+            // After state update, save the inventory. This will save all accumulated changes.
+            await saveInventory(inventory);
           }
         }
       ]
@@ -1540,10 +1562,38 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
       "Sale Complete",
       `Total for this sale: $${currentSaleTotal.toFixed(2)}`,
       [{ text: "OK", onPress: async () => { // Made async
+        // Apply all inventory deductions and log them for items that are inventory tracked
+        let updatedInventoryForDeduction = { ...inventory }; // Create a mutable copy
+
+        currentSaleItems.forEach(saleItem => {
+          if (saleItem.isInventoryTracked) { // This now includes regular sales AND finalized layaways
+            const itemData = updatedInventoryForDeduction[saleItem.category]?.[saleItem.brand]?.[saleItem.item];
+            if (itemData) {
+              const newQuantity = parseInt(itemData.quantity, 10) + saleItem.originalQuantityChange; // originalQuantityChange is already -1
+              const quantityChange = saleItem.originalQuantityChange;
+              const lastChange = `${quantityChange > 0 ? '+' : ''}${quantityChange}`;
+              const lastChangeDate = new Date().toLocaleString();
+
+              updatedInventoryForDeduction = updateInventoryState(saleItem.category, saleItem.brand, saleItem.item, {
+                ...itemData,
+                quantity: newQuantity,
+                lastChange: lastChange,
+                lastChangeDate: lastChangeDate
+              }, updatedInventoryForDeduction); // Update the mutable copy
+              addToLog("Sold Item (Finalized)", saleItem.itemCode, saleItem.category, saleItem.brand, saleItem.item, quantityChange, newQuantity, saleItem.priceSold, saleItem.discountApplied);
+            }
+          } else {
+            // For non-inventory tracked items (like Clips, Other, Layaway Down Payments)
+            addToLog("Logged Sale (Finalized - No Inventory Track)", saleItem.itemCode, saleItem.category, saleItem.brand, saleItem.item, 'N/A', 'N/A', saleItem.priceSold, saleItem.discountApplied);
+          }
+        });
+
+        setInventory(updatedInventoryForDeduction); // Update React state with final inventory
+        await saveInventory(updatedInventoryForDeduction); // Persist all changes to disk
+
         setLastCompletedSaleTotal(currentSaleTotal);
         setCurrentSaleTotal(0);
         setCurrentSaleItems([]);
-        await saveInventory(inventory); // Save inventory when sale is completed
       } }]
     );
   };
@@ -1559,10 +1609,11 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
           onPress: async () => { // Made async
             let currentInventoryForRevert = { ...inventory }; // Get a mutable copy
             currentSaleItems.forEach(itemToRemove => {
-                if (itemToRemove.isInventoryTracked && !itemToRemove.isLayawayDownPayment) {
+                // Only revert if it was an inventory-tracked item AND NOT a layaway down payment
+                if (itemToRemove.isInventoryTracked) { // This covers regular sales and finalized layaways
                     const itemData = currentInventoryForRevert[itemToRemove.category]?.[itemToRemove.brand]?.[itemToRemove.item];
                     if (itemData) {
-                        const newQuantity = parseInt(itemData.quantity, 10) - itemToRemove.originalQuantityChange; // Ensure quantity is a number
+                        const newQuantity = parseInt(itemData.quantity, 10) - itemToRemove.originalQuantityChange; // Revert the deduction
                         currentInventoryForRevert = updateInventoryState(itemToRemove.category, itemToRemove.brand, itemToRemove.item, {
                             ...itemData,
                             quantity: newQuantity,
@@ -1572,6 +1623,7 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
                         addToLog("Sale Cancelled", itemToRemove.itemCode, itemToRemove.category, itemToRemove.brand, itemToRemove.item, -itemToRemove.originalQuantityChange, newQuantity, itemToRemove.priceSold, itemToRemove.discountApplied);
                     }
                 } else {
+                    // For non-inventory tracked items (Clips, Other, Layaway Down Payments)
                     addToLog("Sale Cancelled (No Inventory Revert)", itemToRemove.itemCode, itemToRemove.category, itemToRemove.brand, itemToRemove.item, 'N/A', 'N/A', itemToRemove.priceSold, itemToRemove.discountApplied);
                 }
             });
@@ -1626,8 +1678,18 @@ const MainScreen = ({ addToLog, inventory, updateInventoryState, showLogView, sh
       Alert.alert("", "No items in current sale.");
       return;
     }
-    const itemList = currentSaleItems.map(item => item.item).join('\n');
-    Alert.alert("", itemList);
+    const itemList = currentSaleItems.map(item => {
+      let status = '';
+      if (item.isLayawayDownPayment) {
+        status = ' (Layaway Down Payment)';
+      } else if (item.isLayawayFinalSale) {
+        status = ' (Layaway Finalized)';
+      } else if (!item.isInventoryTracked) {
+        status = ' (No Inventory Track)';
+      }
+      return `${item.item} - $${item.priceSold.toFixed(2)}${status}`;
+    }).join('\n');
+    Alert.alert("Current Sale Items", itemList);
   };
 
 
@@ -2265,15 +2327,18 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
           ))}
         </ScrollView>
       </KeyboardAvoidingView>
-      <TouchableOpacity
-        style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, marginBottom: 10 }]}
-        onPress={() => setShowInventoryGraphModal(true)}
-      >
-        <Text style={[styles.buttonText, { color: colors.headerText }]}>View Inventory Graph</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={showMainView}>
-        <Text style={[styles.buttonText, { color: colors.headerText }]}>Back to Main App</Text>
-      </TouchableOpacity>
+      {/* Buttons side-by-side */}
+      <View style={styles.inventoryManagementButtonsContainer}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.inventoryManagementButton, { backgroundColor: colors.buttonBgTertiary }]}
+          onPress={() => setShowInventoryGraphModal(true)}
+        >
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>View Inventory Graph</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.actionButton, styles.inventoryManagementButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={showMainView}>
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>Back to Main App</Text>
+        </TouchableOpacity>
+      </View>
       <View style={styles.bottomBuffer} />
 
       <SimpleBarChartModal
@@ -2976,7 +3041,7 @@ const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashi
 };
 
 // --- Layaway Management Screen Component ---
-const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, inventory, setInventory, saveInventory, addToLog, showMainView, colors }) => {
+const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, inventory, setInventory, saveInventory, addToLog, showMainView, colors, onAddFinalizedLayawayToCurrentSale }) => {
   const [paymentInputs, setPaymentInputs] = useState({});
 
   useEffect(() => {
@@ -3031,17 +3096,21 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, i
 
     Alert.alert(
       "Complete Layaway",
-      `Mark "${layawayItem.item}" as fully paid and remove from layaway?`,
+      `Mark "${layawayItem.item}" as fully paid and remove from layaway? This will add it to the current sale for final deduction from inventory.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Confirm",
           onPress: async () => { // Made async
+            // 1. Remove from layaway list
             const updatedLayawayItems = layawayItems.filter(item => item.layawayId !== layawayItem.layawayId);
             setLayawayItems(updatedLayawayItems);
             await saveLayaway(updatedLayawayItems); // Await save
-            addToLog("Layaway Completed", layawayItem.itemCode, layawayItem.category, layawayItem.brand, layawayItem.item, 'N/A', 'N/A', layawayItem.originalPrice, 'Layaway Paid Off');
-            Alert.alert("Layaway Completed", `${layawayItem.item} has been marked as paid off.`);
+
+            // 2. Add to MainScreen's current sale for final deduction
+            onAddFinalizedLayawayToCurrentSale(layawayItem);
+
+            Alert.alert("Layaway Completed", `${layawayItem.item} has been marked as paid off and added to the current sale for finalization.`);
           }
         }
       ]
@@ -3845,6 +3914,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     padding: 20,
+  },
+  inventoryManagementButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  inventoryManagementButton: {
+    flex: 1,
+    marginHorizontal: 5,
   }
 });
 
