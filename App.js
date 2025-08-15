@@ -211,8 +211,9 @@ const App = () => {
   const [showLayawayInputModal, setShowLayawayInputModal] = useState(false);
   const [layawayInputModalProps, setLayawayInputModalProps] = useState(null);
 
-  // PSK Modal state
+  // PSK Modal states
   const [showPSKModal, setShowPSKModal] = useState(false);
+  const [showPSKVerifyModal, setShowPSKVerifyModal] = useState(false);
 
 
   // --- File System Functions ---
@@ -915,6 +916,26 @@ const App = () => {
     Alert.alert("PSK Set", "The Pre-Shared Key has been saved.");
   };
 
+  const handleToggleEditMode = () => {
+    if (isEditModeEnabled) {
+      // If currently enabled, lock it without a PSK
+      setIsEditModeEnabled(false);
+    } else {
+      // If currently disabled, require PSK to unlock
+      setShowPSKVerifyModal(true);
+    }
+  };
+
+  const handleVerifyPSK = (pskInput) => {
+    if (pskInput === appConfig.psk) {
+      setIsEditModeEnabled(true);
+      setShowPSKVerifyModal(false);
+      Alert.alert("Success", "Edit mode enabled.");
+    } else {
+      Alert.alert("Incorrect PSK", "The Pre-Shared Key you entered is incorrect.");
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -933,8 +954,14 @@ const App = () => {
         onSetPSK={handleSetPSK}
         colors={colors}
       />
+      <PSKVerificationModal
+        isVisible={showPSKVerifyModal}
+        onVerifyPSK={handleVerifyPSK}
+        onClose={() => setShowPSKVerifyModal(false)}
+        colors={colors}
+      />
       <View style={[styles.header, { backgroundColor: colors.headerBg }]}>
-        <TouchableOpacity style={styles.headerIconButton} onPress={() => setIsEditModeEnabled(!isEditModeEnabled)}>
+        <TouchableOpacity style={styles.headerIconButton} onPress={handleToggleEditMode}>
           <MaterialIcons name={isEditModeEnabled ? "lock-open" : "lock"} size={24} color={colors.headerText} />
         </TouchableOpacity>
         <Text style={[styles.headerText, { color: colors.headerText }]}>LeGrande Accents</Text>
@@ -1054,7 +1081,6 @@ const App = () => {
           cashiers={cashiers}
           appConfig={appConfig}
           showMainView={showMainView}
-          showTimeClockDevMenuView={showTimeClockDevMenuView}
           showPayrollSummaryView={showPayrollSummaryView}
           showCashierManagementView={showCashierManagementView}
           colors={colors}
@@ -1114,7 +1140,7 @@ const PSKSetupModal = ({ isVisible, onSetPSK, colors }) => {
         <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
           <Text style={[styles.modalTitle, { color: colors.text }]}>First Time Setup</Text>
           <Text style={[styles.modalSubtitle, { color: colors.text }]}>
-            Please set a Pre-Shared Key (PSK). This will be used for administrative features in the future.
+            Please set a Pre-Shared Key (PSK). This will be used for administrative features.
           </Text>
           <TextInput
             style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
@@ -1135,6 +1161,60 @@ const PSKSetupModal = ({ isVisible, onSetPSK, colors }) => {
     </Modal>
   );
 };
+
+// --- PSK Verification Modal Component ---
+const PSKVerificationModal = ({ isVisible, onVerifyPSK, onClose, colors }) => {
+  const [pskInput, setPskInput] = useState('');
+
+  const handleSubmit = () => {
+    onVerifyPSK(pskInput);
+    setPskInput('');
+  };
+
+  return (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={isVisible}
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.centeredView}
+      >
+        <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Enter PSK</Text>
+          <Text style={[styles.modalSubtitle, { color: colors.text }]}>
+            Please enter the Pre-Shared Key to enable edit mode.
+          </Text>
+          <TextInput
+            style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+            placeholder="Enter PSK"
+            placeholderTextColor={colors.logDetails}
+            value={pskInput}
+            onChangeText={setPskInput}
+            secureTextEntry
+          />
+          <View style={styles.modalActionButtons}>
+            <TouchableOpacity
+              style={[styles.modalActionButton, { backgroundColor: colors.buttonBgDanger }]}
+              onPress={() => { setPskInput(''); onClose(); }}
+            >
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalActionButton, { backgroundColor: colors.buttonBgPrimary }]}
+              onPress={handleSubmit}
+            >
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Unlock</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+};
+
 
 // --- Discount Modal Component ---
 const DiscountModal = ({ isVisible, onClose, onSelectDiscount, onManualDiscount, onGoBack, onCancelSale, itemDetails, colors }) => {
@@ -2284,11 +2364,11 @@ const LogScreen = ({ log, showMainView, showFileManagementView, colors, lastComp
 };
 
 // --- Time Clock Screen Component ---
-const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig, showMainView, showTimeClockDevMenuView, showPayrollSummaryView, showCashierManagementView, colors }) => {
+const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig, showMainView, showPayrollSummaryView, showCashierManagementView, colors }) => {
   const [activeCashier, setActiveCashier] = useState(null);
   const [showCashierSelection, setShowCashierSelection] = useState(true);
   const [editingPunch, setEditingPunch] = useState(null);
-  const [newPunchTime, setNewPunchTime] = useState('');
+  const [editedPunchDate, setEditedPunchDate] = useState(new Date());
 
   const handleSelectCashier = (cashier) => {
     setActiveCashier(cashier);
@@ -2319,45 +2399,36 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
 
   const handleEditPunch = (punch) => {
     setEditingPunch(punch);
-    setNewPunchTime(new Date(punch.time).toLocaleString());
+    setEditedPunchDate(new Date(punch.time));
   };
 
   const handleSaveEdit = () => {
-    if (!editingPunch || !newPunchTime) return;
+    if (!editingPunch || !editedPunchDate) return;
 
-    try {
-      const updatedTime = new Date(newPunchTime).toISOString();
-      if (isNaN(new Date(updatedTime).getTime())) {
-        Alert.alert("Invalid Date", "The time you entered is not a valid date/time format.");
-        return;
-      }
+    const updatedTime = editedPunchDate.toISOString();
 
-      Alert.prompt(
-        "Reason for Edit",
-        "Please provide a brief reason for this change.",
-        (reason) => {
-          if (reason) {
-            const updatedPunches = punches.map(p => {
-              if (p.id === editingPunch.id) {
-                return {
-                  ...p,
-                  time: updatedTime,
-                  editedBy: activeCashier.code,
-                  editReason: reason,
-                };
-              }
-              return p;
-            });
-            setPunches(updatedPunches);
-            savePunches(updatedPunches);
-            setEditingPunch(null);
-            setNewPunchTime('');
-          }
+    Alert.prompt(
+      "Reason for Edit",
+      "Please provide a brief reason for this change.",
+      (reason) => {
+        if (reason) {
+          const updatedPunches = punches.map(p => {
+            if (p.id === editingPunch.id) {
+              return {
+                ...p,
+                time: updatedTime,
+                editedBy: activeCashier.code,
+                editReason: reason,
+              };
+            }
+            return p;
+          });
+          setPunches(updatedPunches);
+          savePunches(updatedPunches);
+          setEditingPunch(null);
         }
-      );
-    } catch (e) {
-      Alert.alert("Error", "Could not parse the date. Please use a valid format (e.g., MM/DD/YYYY, hh:mm:ss AM/PM).");
-    }
+      }
+    );
   };
 
   const activeCashierPunches = useMemo(() => {
@@ -2458,18 +2529,17 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
         onRequestClose={() => setEditingPunch(null)}
       >
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.centeredView}>
-          <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+          <View style={[styles.modalView, { backgroundColor: colors.cardBg, maxHeight: '90%' }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Punch Time</Text>
-            <TextInput
-              style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-              value={newPunchTime}
-              onChangeText={setNewPunchTime}
-              placeholder="MM/DD/YYYY, hh:mm:ss AM/PM"
+            <PunchDateTimePicker
+              initialDate={editedPunchDate}
+              onDateChange={setEditedPunchDate}
+              colors={colors}
             />
-            <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleSaveEdit}>
+            <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary, width: '100%' }]} onPress={handleSaveEdit}>
               <Text style={[styles.buttonText, { color: colors.headerText }]}>Save Changes</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgDanger }]} onPress={() => setEditingPunch(null)}>
+            <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgDanger, width: '100%' }]} onPress={() => setEditingPunch(null)}>
               <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -2480,9 +2550,6 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
         <TouchableOpacity style={[styles.footerButton, { backgroundColor: colors.buttonBgTertiary }]} onPress={showPayrollSummaryView}>
           <Text style={[styles.buttonText, { color: colors.headerText }]}>Payroll</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.footerButton, { backgroundColor: colors.buttonBgLight }]} onPress={showTimeClockDevMenuView}>
-          <Text style={[styles.buttonText, { color: colors.text }]}>Dev Menu</Text>
-        </TouchableOpacity>
       </View>
 
       <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={() => setShowCashierSelection(true)}>
@@ -2491,6 +2558,86 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
       <View style={styles.bottomBuffer} />
     </View>
   );
+};
+
+// --- Punch Date Time Picker Component ---
+const PunchDateTimePicker = ({ initialDate, onDateChange, colors }) => {
+    const date = initialDate || new Date();
+
+    const updateDatePart = (part, value) => {
+        const newDate = new Date(date.getTime());
+        if (part === 'month') newDate.setMonth(value);
+        if (part === 'day') newDate.setDate(value);
+        if (part === 'year') newDate.setFullYear(value);
+        if (part === 'hour') newDate.setHours(value);
+        if (part === 'minute') newDate.setMinutes(value);
+        onDateChange(newDate);
+    };
+
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const days = Array.from({ length: 31 }, (_, i) => i + 1);
+    const years = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i);
+    const hours = Array.from({ length: 12 }, (_, i) => i + 1);
+    const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
+
+    const currentHour12 = date.getHours() % 12 === 0 ? 12 : date.getHours() % 12;
+    const isAM = date.getHours() < 12;
+
+    const PickerColumn = ({ label, items, selectedValue, onValueChange }) => (
+        <View style={styles.pickerColumn}>
+            <Text style={[styles.pickerLabel, { color: colors.text }]}>{label}</Text>
+            <View style={[styles.picker, { borderColor: colors.inputBorder }]}>
+                <ScrollView>
+                    {items.map(item => (
+                        <TouchableOpacity
+                            key={item}
+                            style={[
+                                styles.pickerItem,
+                                item === selectedValue && { backgroundColor: colors.pickerSelectedBg }
+                            ]}
+                            onPress={() => onValueChange(item)}
+                        >
+                            <Text style={[
+                                { color: colors.pickerText },
+                                item === selectedValue && { color: colors.pickerSelectedText, fontWeight: 'bold' }
+                            ]}>{item}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            </View>
+        </View>
+    );
+
+    return (
+        <View style={styles.dateTimePickerContainer}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-around', width: '100%' }}>
+                <PickerColumn label="Month" items={months} selectedValue={months[date.getMonth()]} onValueChange={val => updateDatePart('month', months.indexOf(val))} />
+                <PickerColumn label="Day" items={days} selectedValue={date.getDate()} onValueChange={val => updateDatePart('day', val)} />
+                <PickerColumn label="Year" items={years} selectedValue={date.getFullYear()} onValueChange={val => updateDatePart('year', val)} />
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 10 }}>
+                <PickerColumn label="Hour" items={hours} selectedValue={currentHour12} onValueChange={val => updateDatePart('hour', isAM ? (val % 12) : (val % 12) + 12)} />
+                <PickerColumn label="Min" items={minutes} selectedValue={date.getMinutes().toString().padStart(2, '0')} onValueChange={val => updateDatePart('minute', parseInt(val, 10))} />
+                <View style={styles.pickerColumn}>
+                    <Text style={[styles.pickerLabel, { color: colors.text }]}>AM/PM</Text>
+                    <View style={{ flexDirection: 'column' }}>
+                        <TouchableOpacity
+                            style={[styles.ampmButton, { backgroundColor: isAM ? colors.pickerSelectedBg : colors.pickerBg }]}
+                            onPress={() => updateDatePart('hour', date.getHours() - 12)}
+                        >
+                            <Text style={{ color: isAM ? colors.pickerSelectedText : colors.pickerText }}>AM</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.ampmButton, { backgroundColor: !isAM ? colors.pickerSelectedBg : colors.pickerBg }]}
+                            onPress={() => updateDatePart('hour', date.getHours() + 12)}
+                        >
+                            <Text style={{ color: !isAM ? colors.pickerSelectedText : colors.pickerText }}>PM</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        </View>
+    );
 };
 
 
@@ -4439,6 +4586,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginTop: 20,
+  },
+  dateTimePickerContainer: {
+    width: '100%',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  pickerColumn: {
+    alignItems: 'center',
+    marginHorizontal: 2,
+  },
+  picker: {
+    height: 120,
+    width: 60,
+    borderWidth: 1,
+    borderRadius: 5,
+  },
+  pickerItem: {
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  ampmButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 5,
+    marginVertical: 2,
+    alignItems: 'center',
   },
 });
 
