@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,7 +10,9 @@ import {
   Alert,
   Platform,
   Modal,
-  KeyboardAvoidingView // Import KeyboardAvoidingView
+  KeyboardAvoidingView,
+  FlatList,
+  Switch,
 } from 'react-native';
 import *as FileSystem from 'expo-file-system';
 import *as Sharing from 'expo-sharing';
@@ -23,6 +25,9 @@ const MENUS_FILE = FileSystem.documentDirectory + 'menus.json';
 const COLOR_SCHEME_FILE = FileSystem.documentDirectory + 'color_scheme.json';
 const CONFIG_BACKUP_FILE = FileSystem.documentDirectory + 'inventory_config_backup.json';
 const LAYAWAY_FILE = FileSystem.documentDirectory + 'layaway.json';
+const TIMECLOCK_FILE = FileSystem.documentDirectory + 'timeclock_punches.json';
+const CASHIERS_FILE = FileSystem.documentDirectory + 'cashiers.json'; // For cashier data
+const APP_CONFIG_FILE = FileSystem.documentDirectory + 'app_config.json'; // For PSK and settings
 
 // --- Default Data for Initialization ---
 const DEFAULT_ITEM_QUANTITY = 10;
@@ -57,6 +62,12 @@ const DEFAULT_MENUS = {
   ]
 };
 const DEFAULT_COLOR_SCHEME = 'light';
+const DEFAULT_APP_CONFIG = {
+  psk: null,
+  firstRun: true,
+  allowPunchEditing: true,
+  lockFeatureEnabled: false,
+};
 
 // --- Color Palettes ---
 const COLOR_PALETTES = {
@@ -176,6 +187,9 @@ const App = () => {
   const [log, setLog] = useState([]);
   const [inventory, setInventory] = useState({});
   const [layawayItems, setLayawayItems] = useState([]);
+  const [timeClockPunches, setTimeClockPunches] = useState([]);
+  const [cashiers, setCashiers] = useState([]);
+  const [appConfig, setAppConfig] = useState(DEFAULT_APP_CONFIG);
   const [isLoading, setIsLoading] = useState(true);
   const [cashierNumber, setCashierNumber] = useState('0');
   const [menuData, setMenuData] = useState(DEFAULT_MENUS);
@@ -196,6 +210,9 @@ const App = () => {
   // New states for the custom layaway input modal
   const [showLayawayInputModal, setShowLayawayInputModal] = useState(false);
   const [layawayInputModalProps, setLayawayInputModalProps] = useState(null);
+
+  // PSK Modal state
+  const [showPSKModal, setShowPSKModal] = useState(false);
 
 
   // --- File System Functions ---
@@ -389,14 +406,13 @@ const App = () => {
 
   const saveInventory = async (currentInventory) => {
     try {
-      // Explicitly try-catch JSON.stringify to catch serialization errors
       let jsonContent;
       try {
         jsonContent = JSON.stringify(currentInventory, null, 2);
       } catch (jsonError) {
         console.error("Failed to stringify inventory JSON:", jsonError);
         Alert.alert("Error", "Failed to prepare inventory data for saving due to data format issue. Please check console for details.");
-        return; // Stop execution if stringify fails
+        return;
       }
       await FileSystem.writeAsStringAsync(INVENTORY_FILE, jsonContent);
     } catch (e) {
@@ -419,7 +435,6 @@ const App = () => {
         loadedMenuData = DEFAULT_MENUS;
       }
 
-      // Ensure 'Clips, etc.' category and 'Fixed Prices' brand are present
       let clipsCategory = loadedMenuData.categories.find(cat => cat.name === 'Clips, etc.');
       if (!clipsCategory) {
         clipsCategory = { name: 'Clips, etc.', brands: [{ name: 'Fixed Prices', items: [] }] };
@@ -435,20 +450,17 @@ const App = () => {
         40, 50, 60, 70, 80, 90, 100, 110, 120, 130,
         140, 150, 160, 170, 180, 190, 200, 250
       ];
-      fixedPricesBrand.items = []; // Clear existing to ensure fresh list
+      fixedPricesBrand.items = [];
       fixedPrices.forEach(price => {
         const itemName = `$${price}.00`;
         fixedPricesBrand.items.push({ name: itemName, price: price });
       });
 
-      // Ensure 'Other' category is present
       let otherCategory = loadedMenuData.categories.find(cat => cat.name === 'Other');
       if (!otherCategory) {
         otherCategory = { name: 'Other', brands: [] };
         loadedMenuData.categories.push(otherCategory);
       }
-      // Note: The 'Custom' brand for 'Other' is not explicitly added here as it's handled dynamically
-      // for one-time sales and doesn't need to persist in the menu structure.
 
       setMenuData(loadedMenuData);
       await saveMenus(loadedMenuData);
@@ -528,6 +540,89 @@ const App = () => {
     }
   };
 
+  const loadTimeClockPunches = async () => {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(TIMECLOCK_FILE);
+      if (fileInfo.exists) {
+        const content = await FileSystem.readAsStringAsync(TIMECLOCK_FILE);
+        setTimeClockPunches(JSON.parse(content));
+      } else {
+        setTimeClockPunches([]);
+        await saveTimeClockPunches([]);
+      }
+    } catch (e) {
+      console.error("Failed to load time clock punches:", e);
+      Alert.alert("Error", "Failed to load time clock data. Initializing empty list.");
+      setTimeClockPunches([]);
+    }
+  };
+
+  const saveTimeClockPunches = async (currentTimeClockPunches) => {
+    try {
+      await FileSystem.writeAsStringAsync(TIMECLOCK_FILE, JSON.stringify(currentTimeClockPunches, null, 2));
+    } catch (e) {
+      console.error("Failed to save time clock punches:", e);
+      Alert.alert("Error", "Failed to save time clock data.");
+    }
+  };
+
+  const loadCashiers = async () => {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(CASHIERS_FILE);
+      if (fileInfo.exists) {
+        const content = await FileSystem.readAsStringAsync(CASHIERS_FILE);
+        setCashiers(JSON.parse(content));
+      } else {
+        setCashiers([]);
+        await saveCashiers([]);
+      }
+    } catch (e) {
+      console.error("Failed to load cashiers:", e);
+      Alert.alert("Error", "Failed to load cashier data.");
+      setCashiers([]);
+    }
+  };
+
+  const saveCashiers = async (currentCashiers) => {
+    try {
+      await FileSystem.writeAsStringAsync(CASHIERS_FILE, JSON.stringify(currentCashiers, null, 2));
+    } catch (e) {
+      console.error("Failed to save cashiers:", e);
+      Alert.alert("Error", "Failed to save cashier data.");
+    }
+  };
+
+  const loadAppConfig = async () => {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(APP_CONFIG_FILE);
+      if (fileInfo.exists) {
+        const content = await FileSystem.readAsStringAsync(APP_CONFIG_FILE);
+        const loadedConfig = JSON.parse(content);
+        setAppConfig(prev => ({ ...prev, ...loadedConfig }));
+        return loadedConfig;
+      } else {
+        setAppConfig(DEFAULT_APP_CONFIG);
+        await saveAppConfig(DEFAULT_APP_CONFIG);
+        return DEFAULT_APP_CONFIG;
+      }
+    } catch (e) {
+      console.error("Failed to load app config:", e);
+      Alert.alert("Error", "Failed to load app configuration.");
+      setAppConfig(DEFAULT_APP_CONFIG);
+      return DEFAULT_APP_CONFIG;
+    }
+  };
+
+  const saveAppConfig = async (currentAppConfig) => {
+    try {
+      await FileSystem.writeAsStringAsync(APP_CONFIG_FILE, JSON.stringify(currentAppConfig, null, 2));
+    } catch (e) {
+      console.error("Failed to save app config:", e);
+      Alert.alert("Error", "Failed to save app configuration.");
+    }
+  };
+
+
   // --- Data Management Functions ---
   const addToLog = (action, itemCode, category, brand, item, quantityChange, newQuantity, priceSold = 'N/A', discountApplied = 'No') => {
     const timestamp = new Date().toLocaleString();
@@ -541,10 +636,9 @@ const App = () => {
     });
   };
 
-  // Refactored to return the new inventory state, not save it directly
   const updateInventoryState = (category, brand, item, updatedItemData, currentInventory) => {
     if (category === 'Clips, etc.' || category === 'Other') {
-      return currentInventory; // No change for these categories
+      return currentInventory;
     }
     const newInventory = { ...currentInventory };
     if (!newInventory[category]) newInventory[category] = {};
@@ -558,9 +652,15 @@ const App = () => {
     const initializeAppData = async () => {
       await ensureLogDirectoryExists();
       await loadColorScheme();
+      const loadedConfig = await loadAppConfig();
+      if (loadedConfig.firstRun) {
+        setShowPSKModal(true);
+      }
       const loadedMenuResult = await loadMenus();
       await loadInventory(loadedMenuResult);
       await loadLayaway();
+      await loadTimeClockPunches();
+      await loadCashiers();
       await loadLogFromFile();
       setIsLoading(false);
     };
@@ -575,6 +675,10 @@ const App = () => {
   const showDevelopmentView = () => setCurrentView('development');
   const showMenuManagementView = () => setCurrentView('menu_management');
   const showLayawayManagementView = () => setCurrentView('layaway_management');
+  const showTimeClockView = () => setCurrentView('time_clock');
+  const showCashierManagementView = () => setCurrentView('cashier_management');
+  const showTimeClockDevMenuView = () => setCurrentView('time_clock_dev_menu');
+  const showPayrollSummaryView = () => setCurrentView('payroll_summary');
 
   // --- Development Reset Function ---
   const resetAppData = async () => {
@@ -591,6 +695,9 @@ const App = () => {
               setLog([]);
               setInventory({});
               setLayawayItems([]);
+              setTimeClockPunches([]);
+              setCashiers([]);
+              setAppConfig(DEFAULT_APP_CONFIG);
               setMenuData(DEFAULT_MENUS);
               setCashierNumber('0');
               setColorScheme(DEFAULT_COLOR_SCHEME);
@@ -602,6 +709,9 @@ const App = () => {
               await FileSystem.deleteAsync(MENUS_FILE, { idempotent: true });
               await FileSystem.deleteAsync(COLOR_SCHEME_FILE, { idempotent: true });
               await FileSystem.deleteAsync(LAYAWAY_FILE, { idempotent: true });
+              await FileSystem.deleteAsync(TIMECLOCK_FILE, { idempotent: true });
+              await FileSystem.deleteAsync(CASHIERS_FILE, { idempotent: true });
+              await FileSystem.deleteAsync(APP_CONFIG_FILE, { idempotent: true });
               const files = await FileSystem.readDirectoryAsync(LOG_DIRECTORY);
               for (const file of files) {
                 await FileSystem.deleteAsync(LOG_DIRECTORY + file, { idempotent: true });
@@ -610,10 +720,13 @@ const App = () => {
               await saveMenus(DEFAULT_MENUS);
               await loadInventory(DEFAULT_MENUS);
               await saveLayaway([]);
+              await saveTimeClockPunches([]);
+              await saveCashiers([]);
+              await saveAppConfig(DEFAULT_APP_CONFIG);
               await loadLogFromFile();
               await saveColorScheme(DEFAULT_COLOR_SCHEME);
 
-              Alert.alert("Success", "All data has been reset and re-initialized.");
+              Alert.alert("Success", "All data has been reset. PSK setup will run on next launch.");
             } catch (e) {
               console.error("Failed to reset data:", e);
               Alert.alert("Error", "Failed to reset data.");
@@ -706,7 +819,6 @@ const App = () => {
     );
   };
 
-  // --- Config Import/Export Functions ---
   const exportConfig = async () => {
     try {
       const menuContent = await FileSystem.readAsStringAsync(MENUS_FILE);
@@ -782,17 +894,25 @@ const App = () => {
       itemCode: layawayItem.itemCode,
       priceSold: paymentAmount,
       discountApplied: 'Layaway Payment',
-      isInventoryTracked: false, // Payments themselves don't track inventory
+      isInventoryTracked: false,
       originalQuantityChange: 0,
-      isLayawayDownPayment: false, // Not a down payment
-      isLayawayPayment: true, // New flag to identify layaway payments
-      isLayawayFinalSale: false, // Not a final sale item itself
+      isLayawayDownPayment: false,
+      isLayawayPayment: true,
+      isLayawayFinalSale: false,
       layawayId: layawayItem.layawayId,
     };
     setCurrentSaleItems(prevItems => [...prevItems, saleItem]);
     setCurrentSaleTotal(prevTotal => prevTotal + paymentAmount);
     addToLog("Layaway Payment (Added to Sale)", layawayItem.itemCode, layawayItem.category, layawayItem.brand, layawayItem.item, 'N/A', 'N/A', paymentAmount, 'Layaway Payment');
-    setCurrentView('main'); // Switch back to the main screen
+    setCurrentView('main');
+  };
+
+  const handleSetPSK = async (psk) => {
+    const newConfig = { ...appConfig, psk: psk, firstRun: false };
+    setAppConfig(newConfig);
+    await saveAppConfig(newConfig);
+    setShowPSKModal(false);
+    Alert.alert("PSK Set", "The Pre-Shared Key has been saved.");
   };
 
 
@@ -808,19 +928,29 @@ const App = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, paddingTop: Platform.OS === 'android' ? 30 : 0 }]}>
+      <PSKSetupModal
+        isVisible={showPSKModal}
+        onSetPSK={handleSetPSK}
+        colors={colors}
+      />
       <View style={[styles.header, { backgroundColor: colors.headerBg }]}>
-        <TouchableOpacity style={styles.editModeButton} onPress={() => setIsEditModeEnabled(!isEditModeEnabled)}>
+        <TouchableOpacity style={styles.headerIconButton} onPress={() => setIsEditModeEnabled(!isEditModeEnabled)}>
           <MaterialIcons name={isEditModeEnabled ? "lock-open" : "lock"} size={24} color={colors.headerText} />
         </TouchableOpacity>
         <Text style={[styles.headerText, { color: colors.headerText }]}>LeGrande Accents</Text>
-        <TouchableOpacity
-          style={[styles.devButton, { backgroundColor: colors.buttonBgSecondary }]}
-          onPress={currentView === 'development' ? showMainView : showDevelopmentView}
-        >
-          <Text style={[styles.devButtonText, { color: colors.headerText }]}>
-            {currentView === 'development' ? 'Main' : 'Dev'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.headerRightContainer}>
+            <TouchableOpacity style={styles.headerIconButton} onPress={showTimeClockView}>
+                <MaterialIcons name="schedule" size={24} color={colors.headerText} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.devButton, { backgroundColor: colors.buttonBgSecondary }]}
+              onPress={currentView === 'development' ? showMainView : showDevelopmentView}
+            >
+              <Text style={[styles.devButtonText, { color: colors.headerText }]}>
+                {currentView === 'development' ? 'Main' : 'Dev'}
+              </Text>
+            </TouchableOpacity>
+        </View>
       </View>
 
       {currentView === 'main' ? (
@@ -850,7 +980,6 @@ const App = () => {
           setShowLayawayInputModal={setShowLayawayInputModal}
           layawayInputModalProps={layawayInputModalProps}
           setLayawayInputModalProps={setLayawayInputModalProps}
-          // Pass sale state and setters from App
           currentSaleTotal={currentSaleTotal}
           setCurrentSaleTotal={setCurrentSaleTotal}
           currentSaleItems={currentSaleItems}
@@ -887,6 +1016,7 @@ const App = () => {
           setColorScheme={setColorScheme}
           saveColorScheme={saveColorScheme}
           showMenuManagementView={showMenuManagementView}
+          showCashierManagementView={showCashierManagementView}
           populateExampleItems={populateExampleItems}
           exportConfig={exportConfig}
           importConfig={importConfig}
@@ -916,8 +1046,93 @@ const App = () => {
           colors={colors}
           onAddLayawayPaymentToSale={handleAddLayawayPaymentToSale}
         />
+      ) : currentView === 'time_clock' ? (
+        <TimeClockScreen
+          punches={timeClockPunches}
+          setPunches={setTimeClockPunches}
+          savePunches={saveTimeClockPunches}
+          cashiers={cashiers}
+          appConfig={appConfig}
+          showMainView={showMainView}
+          showTimeClockDevMenuView={showTimeClockDevMenuView}
+          showPayrollSummaryView={showPayrollSummaryView}
+          showCashierManagementView={showCashierManagementView}
+          colors={colors}
+        />
+      ) : currentView === 'cashier_management' ? (
+        <CashierManagementScreen
+          cashiers={cashiers}
+          setCashiers={setCashiers}
+          saveCashiers={saveCashiers}
+          showDevelopmentView={showDevelopmentView}
+          colors={colors}
+        />
+      ) : currentView === 'time_clock_dev_menu' ? (
+        <TimeClockDevMenu
+          appConfig={appConfig}
+          setAppConfig={setAppConfig}
+          saveAppConfig={saveAppConfig}
+          showTimeClockView={showTimeClockView}
+          colors={colors}
+        />
+      ) : currentView === 'payroll_summary' ? (
+        <PayrollSummaryScreen
+          punches={timeClockPunches}
+          cashiers={cashiers}
+          showTimeClockView={showTimeClockView}
+          colors={colors}
+        />
       ) : null}
     </SafeAreaView>
+  );
+};
+
+// --- PSK Setup Modal Component ---
+const PSKSetupModal = ({ isVisible, onSetPSK, colors }) => {
+  const [pskInput, setPskInput] = useState('');
+
+  const handleSubmit = () => {
+    if (pskInput.trim().length < 4) {
+      Alert.alert("Invalid PSK", "Pre-Shared Key must be at least 4 characters long.");
+      return;
+    }
+    onSetPSK(pskInput.trim());
+    setPskInput('');
+  };
+
+  return (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={isVisible}
+      onRequestClose={() => Alert.alert("Setup Required", "You must set a Pre-Shared Key to continue.")}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.centeredView}
+      >
+        <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>First Time Setup</Text>
+          <Text style={[styles.modalSubtitle, { color: colors.text }]}>
+            Please set a Pre-Shared Key (PSK). This will be used for administrative features in the future.
+          </Text>
+          <TextInput
+            style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+            placeholder="Enter PSK (min 4 characters)"
+            placeholderTextColor={colors.logDetails}
+            value={pskInput}
+            onChangeText={setPskInput}
+            secureTextEntry
+          />
+          <TouchableOpacity
+            style={[styles.modalButton, { backgroundColor: colors.buttonBgPrimary, width: '100%' }]}
+            onPress={handleSubmit}
+          >
+            <Text style={[styles.buttonText, { color: colors.headerText }]}>Save PSK and Start</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 };
 
@@ -925,7 +1140,6 @@ const App = () => {
 const DiscountModal = ({ isVisible, onClose, onSelectDiscount, onManualDiscount, onGoBack, onCancelSale, itemDetails, colors }) => {
   const [manualPercentage, setManualPercentage] = useState('');
 
-  // Reset manual percentage when modal opens for a new item
   useEffect(() => {
     if (isVisible) {
       setManualPercentage('');
@@ -936,7 +1150,7 @@ const DiscountModal = ({ isVisible, onClose, onSelectDiscount, onManualDiscount,
     const percentage = parseFloat(manualPercentage);
     if (!isNaN(percentage) && percentage >= 0 && percentage <= 100) {
       onManualDiscount(percentage);
-      onClose(); // Close modal after applying
+      onClose();
     }
     else {
       Alert.alert("Invalid Input", "Please enter a valid percentage between 0 and 100.");
@@ -1032,7 +1246,7 @@ const LayawayInputModal = ({ isVisible, onClose, onConfirmLayaway, itemDetails, 
     }
   };
 
-  if (!itemDetails) return null; // Prevent rendering if no itemDetails
+  if (!itemDetails) return null;
 
   return (
     <Modal
@@ -1097,7 +1311,6 @@ const MainScreen = ({
   menuData, colors, setInventory, saveInventory, saveMenus, setMenuData, setLastCompletedSaleTotal, layawayItems, setLayawayItems,
   saveLayaway, showDiscountModal, setShowDiscountModal, discountModalProps, setDiscountModalProps, showLayawayInputModal,
   setShowLayawayInputModal, layawayInputModalProps, setLayawayInputModalProps,
-  // Receive sale state and setters from App component
   currentSaleTotal, setCurrentSaleTotal, currentSaleItems, setCurrentSaleItems
 }) => {
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -1136,9 +1349,6 @@ const MainScreen = ({
         });
       });
     });
-
-    // We no longer add 'Other' items from the menu structure to allSearchableItems
-    // as they are handled as one-time custom inputs.
     setAllSearchableItems(flattenedItems);
   }, [inventory, menuData]);
 
@@ -1199,7 +1409,6 @@ const MainScreen = ({
             price: priceToUse,
           };
           if (isClipAdjustmentMode) {
-            // Show custom discount modal
             setDiscountModalProps({ category, brand, item, currentPrice: priceToUse, noInventoryUpdate: true, passedItemData: tempItemData });
             setShowDiscountModal(true);
           } else {
@@ -1210,10 +1419,8 @@ const MainScreen = ({
         }
         return;
       } else if (category === 'Other') {
-        // This path is for "Other" items selected from the menu (if any were somehow added)
-        // or for fixed price "Other" items.
         const categoryObj = menuData.categories.find(c => c.name === category);
-        const brandObj = categoryObj?.brands.find(b => b.name === 'Custom'); // Assuming 'Custom' is the brand for Other
+        const brandObj = categoryObj?.brands.find(b => b.name === 'Custom');
         const menuItem = brandObj?.items.find(i => i.name === item);
         if (menuItem) {
           priceToUse = menuItem.price;
@@ -1227,22 +1434,18 @@ const MainScreen = ({
           };
           handleLogSale(category, brand, item, priceToUse, 'No', true, tempItemData);
         } else {
-          // If a custom 'Other' item was manually added to the menu (which we now prevent),
-          // or if it's an 'Other' item not found, it falls here.
-          // For now, we'll treat it as a generic 'Other' sale.
           const tempItemData = {
             itemCode: generateUniqueItemCode(category, brand, item),
             category: category,
             brand: brand,
             item: item,
             quantity: 'N/A',
-            price: priceToUse || DEFAULT_ITEM_PRICE, // Use default if price is missing
+            price: priceToUse || DEFAULT_ITEM_PRICE,
           };
           handleLogSale(category, brand, item, tempItemData.price, 'No', true, tempItemData);
         }
         return;
       } else {
-        // This path is for new items added to inventory-tracked categories via selection.
         Alert.prompt(
           "Set Price for New Item",
           `Enter price for "${item}" (Category: ${category}, Brand: ${brand}). An item code will be generated.`,
@@ -1250,7 +1453,7 @@ const MainScreen = ({
             { text: "Cancel", style: "cancel" },
             {
               text: "Confirm",
-              onPress: async (priceText) => { // Made async
+              onPress: async (priceText) => {
                 const price = parseFloat(priceText);
                 if (!isNaN(price) && price >= 0) {
                   const newItemData = {
@@ -1265,7 +1468,7 @@ const MainScreen = ({
                   };
                   const updatedInventory = updateInventoryState(category, brand, item, newItemData, inventory);
                   setInventory(updatedInventory);
-                  await saveInventory(updatedInventory); // Await save
+                  await saveInventory(updatedInventory);
                   handleLogSale(category, brand, item, price, 'No');
                 } else {
                   Alert.alert("Invalid Price", "Please enter a valid positive number for the price.");
@@ -1357,36 +1560,30 @@ const MainScreen = ({
     );
   };
 
-  // This function will now be called by the DiscountModal
   const handleApplyDiscount = (discountPercentage) => {
     const { category, brand, item, currentPrice, noInventoryUpdate, passedItemData } = discountModalProps;
     const discountedPrice = currentPrice * (1 - (discountPercentage / 100));
     const tempItemData = passedItemData || { itemCode: generateUniqueItemCode(category, brand, item), category, brand, item, quantity: 'N/A', price: currentPrice };
     handleLogSale(category, brand, item, discountedPrice, `${discountPercentage}% Discount`, noInventoryUpdate, tempItemData);
-    setIsClipAdjustmentMode(false); // Ensure clip adjustment mode is off
+    setIsClipAdjustmentMode(false);
   };
 
-  // This function will be called by the DiscountModal for manual input
   const handleApplyManualDiscount = (percentage) => {
     const { category, brand, item, currentPrice, noInventoryUpdate, passedItemData } = discountModalProps;
     const discountedPrice = currentPrice * (1 - (percentage / 100));
     const tempItemData = passedItemData || { itemCode: generateUniqueItemCode(category, brand, item), category, brand, item, quantity: 'N/A', price: currentPrice };
     handleLogSale(category, brand, item, discountedPrice, `${percentage}% Discount`, noInventoryUpdate, tempItemData);
-    setIsClipAdjustmentMode(false); // Ensure clip adjustment mode is off
+    setIsClipAdjustmentMode(false);
   };
 
-  // This function will be called by the DiscountModal's "Back" button
   const handleDiscountModalBack = () => {
     const { category, brand, item } = discountModalProps;
-    handleItemClickForSale(category, brand, item); // Re-show the "Confirm Sale" prompt
-    setIsClipAdjustmentMode(false); // Exit clip adjustment mode
+    handleItemClickForSale(category, brand, item);
+    setIsClipAdjustmentMode(false);
   };
 
-  // This function will be called by the DiscountModal's "Cancel Sale" button
   const handleDiscountModalCancelSale = () => {
-    // No action needed here, as the modal's onClose will handle closing, and the sale is cancelled
-    // by the user choosing this option. The actual sale cancellation logic is in handleCancelSale.
-    setIsClipAdjustmentMode(false); // Exit clip adjustment mode
+    setIsClipAdjustmentMode(false);
   };
 
   const handleLogSale = (category, brand, item, priceSold, discountApplied, noInventoryUpdate = false, passedItemData = null) => {
@@ -1415,7 +1612,6 @@ const MainScreen = ({
     setCurrentSaleItems(prevItems => [...prevItems, saleItem]);
     setCurrentSaleTotal(prevTotal => prevTotal + priceSold);
 
-    // Note: Inventory state is not saved here. It's saved on sale completion.
     if (!noInventoryUpdate && saleItem.isInventoryTracked) {
       const newQuantity = parseInt(itemData.quantity, 10) - 1;
       const updatedInventory = updateInventoryState(category, brand, item, {
@@ -1453,7 +1649,7 @@ const MainScreen = ({
       brand: brand,
       item: item,
       originalPrice: originalPrice,
-      amountPaid: 0, // Amount paid is 0 until the down payment sale is completed
+      amountPaid: 0,
       remainingBalance: originalPrice,
       layawayDate: new Date().toLocaleString(),
       isInventoryTracked: category !== 'Clips, etc.' && category !== 'Other',
@@ -1520,7 +1716,7 @@ const MainScreen = ({
             if (lastItem.isInventoryTracked) {
               const itemData = inventory[lastItem.category]?.[lastItem.brand]?.[lastItem.item];
               if (itemData) {
-                const newQuantity = parseInt(itemData.quantity, 10) - lastItem.originalQuantityChange; // Revert the deduction
+                const newQuantity = parseInt(itemData.quantity, 10) - lastItem.originalQuantityChange;
                 const updatedInventory = updateInventoryState(lastItem.category, lastItem.brand, lastItem.item, {
                   ...itemData,
                   quantity: newQuantity,
@@ -1565,7 +1761,7 @@ const MainScreen = ({
                     if (saleItem.isInventoryTracked) {
                         const itemData = updatedInventory[saleItem.category]?.[saleItem.brand]?.[saleItem.item];
                         if (itemData) {
-                            const newQuantity = parseInt(itemData.quantity, 10); // Quantity was already reduced when added to sale
+                            const newQuantity = parseInt(itemData.quantity, 10);
                             const quantityChange = saleItem.originalQuantityChange;
                             updatedInventory = updateInventoryState(saleItem.category, saleItem.brand, saleItem.item, {
                                 ...itemData,
@@ -1630,7 +1826,7 @@ const MainScreen = ({
 
   const handleCancelSale = async () => {
     if (currentSaleItems.length === 0) {
-        return; // No sale to cancel
+        return;
     }
     Alert.alert(
       "Cancel Sale",
@@ -1647,7 +1843,7 @@ const MainScreen = ({
               if (saleItem.isInventoryTracked) {
                 const itemData = inventoryToRevert[saleItem.category]?.[saleItem.brand]?.[saleItem.item];
                 if (itemData) {
-                  const newQuantity = parseInt(itemData.quantity, 10) - saleItem.originalQuantityChange; // Revert deduction
+                  const newQuantity = parseInt(itemData.quantity, 10) - saleItem.originalQuantityChange;
                   inventoryToRevert = updateInventoryState(saleItem.category, saleItem.brand, saleItem.item, {
                     ...itemData,
                     quantity: newQuantity,
@@ -1657,7 +1853,6 @@ const MainScreen = ({
                 }
               }
               if (saleItem.isLayawayDownPayment) {
-                // If a down payment is cancelled, the entire layaway entry should be removed
                 layawaysToRevert = layawaysToRevert.filter(l => l.layawayId !== saleItem.layawayId);
               }
               addToLog("Sale Cancelled", saleItem.itemCode, saleItem.category, saleItem.brand, saleItem.item, 'N/A', 'N/A', saleItem.priceSold, 'Cancelled');
@@ -1993,32 +2188,30 @@ const MainScreen = ({
           </View>
         ) : (
           <>
-            <TouchableOpacity style={[styles.logButton, { backgroundColor: colors.buttonBgSecondary, flex: 1 }]} onPress={showLogView}>
-              <Text style={[styles.buttonText, { color: colors.headerText }]}>Activity Log</Text>
+            <TouchableOpacity style={[styles.footerButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showLogView}>
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Log</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.inventoryButton, { backgroundColor: colors.buttonBgTertiary, flex: 1 }]} onPress={showInventoryView}>
-              <Text style={[styles.buttonText, { color: colors.headerText }]}>Manage Inventory</Text>
+            <TouchableOpacity style={[styles.footerButton, { backgroundColor: colors.buttonBgTertiary }]} onPress={showInventoryView}>
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Inventory</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.layawayButton, { backgroundColor: colors.buttonBgTertiary, flex: 1 }]} onPress={showLayawayManagementView}>
+            <TouchableOpacity style={[styles.footerButton, { backgroundColor: colors.buttonBgTertiary }]} onPress={showLayawayManagementView}>
               <Text style={[styles.buttonText, { color: colors.headerText }]}>Layaway</Text>
             </TouchableOpacity>
           </>
         )}
       </View>
 
-      {/* Custom Discount Modal */}
       <DiscountModal
         isVisible={showDiscountModal}
         onClose={() => setShowDiscountModal(false)}
         onSelectDiscount={handleApplyDiscount}
         onManualDiscount={handleApplyManualDiscount}
         onGoBack={handleDiscountModalBack}
-        onCancelSale={handleCancelSale} // Call MainScreen's handleCancelSale
+        onCancelSale={handleCancelSale}
         itemDetails={discountModalProps}
         colors={colors}
       />
 
-      {/* Custom Layaway Input Modal */}
       <LayawayInputModal
         isVisible={showLayawayInputModal}
         onClose={() => setShowLayawayInputModal(false)}
@@ -2090,9 +2283,220 @@ const LogScreen = ({ log, showMainView, showFileManagementView, colors, lastComp
   );
 };
 
+// --- Time Clock Screen Component ---
+const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig, showMainView, showTimeClockDevMenuView, showPayrollSummaryView, showCashierManagementView, colors }) => {
+  const [activeCashier, setActiveCashier] = useState(null);
+  const [showCashierSelection, setShowCashierSelection] = useState(true);
+  const [editingPunch, setEditingPunch] = useState(null);
+  const [newPunchTime, setNewPunchTime] = useState('');
+
+  const handleSelectCashier = (cashier) => {
+    setActiveCashier(cashier);
+    setShowCashierSelection(false);
+  };
+
+  const handlePunch = (type) => {
+    if (!activeCashier) {
+      Alert.alert("Error", "No cashier selected.");
+      return;
+    }
+
+    const newPunch = {
+      id: `${new Date().toISOString()}-${Math.random()}`, // Unique ID for each punch
+      cashierCode: activeCashier.code,
+      time: new Date().toISOString(),
+      type,
+      originalTime: new Date().toISOString(),
+      editedBy: null,
+      editReason: null,
+    };
+
+    const newPunches = [...punches, newPunch];
+    setPunches(newPunches);
+    savePunches(newPunches);
+    Alert.alert("Success", `${activeCashier.name} punched ${type.toLowerCase()} at ${new Date().toLocaleTimeString()}`);
+  };
+
+  const handleEditPunch = (punch) => {
+    setEditingPunch(punch);
+    setNewPunchTime(new Date(punch.time).toLocaleString());
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingPunch || !newPunchTime) return;
+
+    try {
+      const updatedTime = new Date(newPunchTime).toISOString();
+      if (isNaN(new Date(updatedTime).getTime())) {
+        Alert.alert("Invalid Date", "The time you entered is not a valid date/time format.");
+        return;
+      }
+
+      Alert.prompt(
+        "Reason for Edit",
+        "Please provide a brief reason for this change.",
+        (reason) => {
+          if (reason) {
+            const updatedPunches = punches.map(p => {
+              if (p.id === editingPunch.id) {
+                return {
+                  ...p,
+                  time: updatedTime,
+                  editedBy: activeCashier.code,
+                  editReason: reason,
+                };
+              }
+              return p;
+            });
+            setPunches(updatedPunches);
+            savePunches(updatedPunches);
+            setEditingPunch(null);
+            setNewPunchTime('');
+          }
+        }
+      );
+    } catch (e) {
+      Alert.alert("Error", "Could not parse the date. Please use a valid format (e.g., MM/DD/YYYY, hh:mm:ss AM/PM).");
+    }
+  };
+
+  const activeCashierPunches = useMemo(() => {
+    if (!activeCashier) return [];
+    return [...punches]
+      .filter(p => p.cashierCode === activeCashier.code)
+      .sort((a, b) => new Date(b.time) - new Date(a.time));
+  }, [punches, activeCashier]);
+
+  if (showCashierSelection) {
+    return (
+      <Modal visible={true} transparent={true} animationType="fade">
+        <View style={styles.centeredView}>
+          <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Select Cashier</Text>
+            {cashiers.length === 0 ? (
+              <View style={{alignItems: 'center', width: '100%'}}>
+                <Text style={[styles.modalSubtitle, { color: colors.text }]}>
+                  No cashiers found. Please add a cashier to use the Time Clock.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary, width: '100%' }]}
+                  onPress={showCashierManagementView}
+                >
+                  <Text style={[styles.buttonText, { color: colors.headerText }]}>Go to Cashier Setup</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <ScrollView style={{ width: '100%' }}>
+                {cashiers.map(cashier => (
+                  <TouchableOpacity
+                    key={cashier.code}
+                    style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]}
+                    onPress={() => handleSelectCashier(cashier)}
+                  >
+                    <Text style={[styles.buttonText, { color: colors.headerText }]}>{cashier.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+            <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showMainView}>
+              <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Main App'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  return (
+    <View style={styles.contentContainer}>
+      <Text style={[styles.title, { color: colors.text }]}>Time Clock</Text>
+      <Text style={[styles.subtitle, { color: colors.text, textAlign: 'center' }]}>
+        Welcome, {activeCashier?.name}
+      </Text>
+
+      <View style={styles.timeClockButtonRow}>
+        <TouchableOpacity style={[styles.timeClockButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={() => handlePunch('IN')}>
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>Punch IN</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.timeClockButton, { backgroundColor: colors.buttonBgDanger }]} onPress={() => handlePunch('OUT')}>
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>Punch OUT</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={[styles.subtitle, { color: colors.text, textAlign: 'center' }]}>Your Punch History</Text>
+      <FlatList
+        style={[styles.logContainer, { backgroundColor: colors.cardBg }]}
+        data={activeCashierPunches}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <View style={[styles.timeClockPunchItem, { borderBottomColor: colors.logEntryBorder }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: 'bold' }}>{item.type} at {new Date(item.time).toLocaleTimeString()}</Text>
+              <Text style={{ color: colors.logDetails }}>{new Date(item.time).toLocaleDateString()}</Text>
+              {item.editReason && (
+                <Text style={{ color: colors.warningText, fontSize: 12, fontStyle: 'italic' }}>
+                  Edited: {item.editReason}
+                </Text>
+              )}
+            </View>
+            {appConfig.allowPunchEditing && (
+              <TouchableOpacity
+                style={[styles.smallActionButton, { backgroundColor: colors.buttonBgSecondary }]}
+                onPress={() => handleEditPunch(item)}
+              >
+                <Text style={[styles.smallButtonText, { color: colors.headerText }]}>Edit</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      />
+
+      <Modal
+        visible={!!editingPunch}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setEditingPunch(null)}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.centeredView}>
+          <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Punch Time</Text>
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+              value={newPunchTime}
+              onChangeText={setNewPunchTime}
+              placeholder="MM/DD/YYYY, hh:mm:ss AM/PM"
+            />
+            <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleSaveEdit}>
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Save Changes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgDanger }]} onPress={() => setEditingPunch(null)}>
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <View style={styles.timeClockNavButtons}>
+        <TouchableOpacity style={[styles.footerButton, { backgroundColor: colors.buttonBgTertiary }]} onPress={showPayrollSummaryView}>
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>Payroll</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.footerButton, { backgroundColor: colors.buttonBgLight }]} onPress={showTimeClockDevMenuView}>
+          <Text style={[styles.buttonText, { color: colors.text }]}>Dev Menu</Text>
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={() => setShowCashierSelection(true)}>
+        <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Change Cashier'}</Text>
+      </TouchableOpacity>
+      <View style={styles.bottomBuffer} />
+    </View>
+  );
+};
+
+
 // --- Simple Bar Chart Component ---
 const SimpleBarChart = ({ data, maxValue, colors }) => {
-  const maxBarHeight = 150; // Max height for a bar in pixels
+  const maxBarHeight = 150;
 
   return (
     <View style={styles.chartContainer}>
@@ -2184,21 +2588,21 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
           label: categoryName,
           value: categoryQuantities[categoryName]
         }))
-        .sort((a, b) => b.value - a.value); // Sort descending by value
+        .sort((a, b) => b.value - a.value);
 
       setInventoryGraphData(dataForChart);
-      setMaxInventoryValue(currentMax > 0 ? currentMax : 1); // Ensure max is at least 1 to avoid division by zero
+      setMaxInventoryValue(currentMax > 0 ? currentMax : 1);
     };
 
     aggregateData();
-  }, [inventory, menuData]); // Re-run when inventory or menuData changes
+  }, [inventory, menuData]);
 
 
-  const handleAdjustQuantity = async (category, brand, item, adjustment) => { // Made async
+  const handleAdjustQuantity = async (category, brand, item, adjustment) => {
     const itemData = inventory[category]?.[brand]?.[item];
     if (!itemData) return;
 
-    const currentQuantity = parseInt(itemData.quantity, 10); // Ensure quantity is a number
+    const currentQuantity = parseInt(itemData.quantity, 10);
     const newQuantity = currentQuantity + adjustment;
     const quantityChange = adjustment;
     const lastChange = `${quantityChange > 0 ? '+' : ''}${quantityChange}`;
@@ -2211,17 +2615,17 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
       lastChangeDate: lastChangeDate
     }, inventory);
     setInventory(updatedInventory);
-    await saveInventory(updatedInventory); // Await the save
+    await saveInventory(updatedInventory);
     addToLog("Adjusted Inventory", itemData.itemCode, category, brand, item, quantityChange, newQuantity, itemData.price, 'No');
   };
 
-  const handleManualQuantityChange = async (category, brand, item, text) => { // Made async
+  const handleManualQuantityChange = async (category, brand, item, text) => {
     const itemData = inventory[category]?.[brand]?.[item];
     if (!itemData) return;
 
     const quantity = parseInt(text, 10);
     if (!isNaN(quantity)) {
-      const currentQuantity = parseInt(itemData.quantity, 10); // Ensure quantity is a number
+      const currentQuantity = parseInt(itemData.quantity, 10);
       const quantityChange = quantity - currentQuantity;
       const lastChange = quantityChange !== 0 ? `${quantityChange > 0 ? '+' : ''}${quantityChange}` : 'N/A';
       const lastChangeDate = new Date().toLocaleString();
@@ -2233,16 +2637,16 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
         lastChangeDate: lastChangeDate
       }, inventory);
       setInventory(updatedInventory);
-      await saveInventory(updatedInventory); // Await the save
+      await saveInventory(updatedInventory);
       addToLog("Manually Set Inventory", itemData.itemCode, category, brand, item, lastChange, quantity, itemData.price, 'No');
     } else if (text === '') {
-      // Allow empty input temporarily without error, but don't save
+      // Allow empty input
     } else {
       Alert.alert("Invalid Input", "Please enter a valid number.");
     }
   };
 
-  const handleManualPriceChange = async (category, brand, item, text) => { // Made async
+  const handleManualPriceChange = async (category, brand, item, text) => {
     const itemData = inventory[category]?.[brand]?.[item];
     if (!itemData) return;
 
@@ -2259,10 +2663,10 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
         lastChangeDate: lastChangeDate
       }, inventory);
       setInventory(updatedInventory);
-      await saveInventory(updatedInventory); // Await the save
+      await saveInventory(updatedInventory);
       addToLog("Price Updated", itemData.itemCode, category, brand, item, 'N/A', itemData.quantity, price, 'No');
     } else if (text === '') {
-      // Allow empty input temporarily without error, but don't save
+      // Allow empty input
     } else {
       Alert.alert("Invalid Input", "Please enter a valid positive number for the price.");
     }
@@ -2358,7 +2762,6 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
           ))}
         </ScrollView>
       </KeyboardAvoidingView>
-      {/* Buttons side-by-side */}
       <View style={styles.inventoryManagementButtonsContainer}>
         <TouchableOpacity
           style={[styles.actionButton, styles.inventoryManagementButton, styles.graphButton, { backgroundColor: colors.buttonBgTertiary }]}
@@ -2557,12 +2960,12 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
     ? menuData.categories.find(cat => cat.name === selectedCategoryForBrand)?.brands.map(brand => brand.name) || []
     : [];
 
-  const handleAddCategory = async () => { // Made async
+  const handleAddCategory = async () => {
     if (newCategoryInput.trim() !== '' && !menuData.categories.some(cat => cat.name === newCategoryInput.trim())) {
       const updatedCategories = [...menuData.categories, { name: newCategoryInput.trim(), brands: [] }];
       const updatedMenuData = { ...menuData, categories: updatedCategories };
       setMenuData(updatedMenuData);
-      await saveMenus(updatedMenuData); // Await save
+      await saveMenus(updatedMenuData);
       addToLog("Menu Changed", "N/A", newCategoryInput.trim(), "N/A", "N/A", "Category Added", "N/A", "N/A", "No");
       setNewCategoryInput('');
     } else {
@@ -2578,22 +2981,21 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
-          onPress: async () => { // Made async
+          onPress: async () => {
             const updatedMenuData = {
               ...menuData,
               categories: menuData.categories.filter(cat => cat.name !== categoryName)
             };
             setMenuData(updatedMenuData);
-            await saveMenus(updatedMenuData); // Await save
+            await saveMenus(updatedMenuData);
 
             if (categoryName !== 'Clips, etc.' && categoryName !== 'Other') {
               setInventory(prevInventory => {
                 const newInventory = { ...prevInventory };
                 delete newInventory[categoryName];
-                // saveInventory(newInventory); // Removed direct save here
+                saveInventory(newInventory);
                 return newInventory;
               });
-              await saveInventory(inventory); // Save after setInventory has processed
             }
             addToLog("Menu Changed", "N/A", categoryName, "N/A", "N/A", "Category Deleted", "N/A", "N/A", "No");
             setSelectedCategoryForBrand(null);
@@ -2604,7 +3006,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
     );
   };
 
-  const handleAddBrand = async () => { // Made async
+  const handleAddBrand = async () => {
     if (!selectedCategoryForBrand) {
       Alert.alert("Selection Required", "Please select a category first.");
       return;
@@ -2617,7 +3019,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         if (!category.brands.some(brand => brand.name === newBrandInput.trim())) {
           category.brands.push({ name: newBrandInput.trim(), items: [] });
           setMenuData(updatedMenuData);
-          await saveMenus(updatedMenuData); // Await save
+          await saveMenus(updatedMenuData);
           addToLog("Menu Changed", "N/A", selectedCategoryForBrand, newBrandInput.trim(), "N/A", "Brand Added", "N/A", "N/A", "No");
           setNewBrandInput('');
         } else {
@@ -2637,7 +3039,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
-          onPress: async () => { // Made async
+          onPress: async () => {
             const updatedMenuData = { ...menuData };
             const category = updatedMenuData.categories.find(cat => cat.name === categoryName);
             if (category) {
@@ -2650,7 +3052,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
               if (brand) {
                 category.brands = category.brands.filter(b => b.name !== brandName);
                 setMenuData(updatedMenuData);
-                await saveMenus(updatedMenuData); // Await save
+                await saveMenus(updatedMenuData);
 
                 if (categoryName !== 'Clips, etc.' && categoryName !== 'Other') {
                   setInventory(prevInventory => {
@@ -2661,10 +3063,9 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
                         delete newInventory[categoryName];
                       }
                     }
-                    // saveInventory(newInventory); // Removed direct save here
+                    saveInventory(newInventory);
                     return newInventory;
                   });
-                  await saveInventory(inventory); // Save after setInventory has processed
                 }
                 addToLog("Menu Changed", "N/A", categoryName, brandName, "N/A", "Brand Deleted", "N/A", "N/A", "No");
                 setSelectedBrandForItems(null);
@@ -2676,7 +3077,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
     );
   };
 
-  const handleAddItem = async () => { // Made async
+  const handleAddItem = async () => {
     if (!selectedCategoryForBrand || !selectedBrandForItems) {
       Alert.alert("Selection Required", "Please select a category and brand first.");
       return;
@@ -2708,7 +3109,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         if (!brand.items.some(itemObj => itemObj.name === newItemInput.trim())) {
           brand.items.push({ name: newItemInput.trim(), price: itemPrice });
           setMenuData(updatedMenuData);
-          await saveMenus(updatedMenuData); // Await save
+          await saveMenus(updatedMenuData);
 
           if (selectedCategoryForBrand !== 'Clips, etc.' && selectedCategoryForBrand !== 'Other') {
             const updatedInventory = updateInventoryState(selectedCategoryForBrand, selectedBrandForItems, newItemInput.trim(), {
@@ -2722,7 +3123,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
               lastChangeDate: new Date().toLocaleString()
             }, inventory);
             setInventory(updatedInventory);
-            await saveInventory(updatedInventory); // Await save
+            await saveInventory(updatedInventory);
           }
 
           addToLog("Menu Changed", "N/A", selectedCategoryForBrand, selectedBrandForItems, newItemInput.trim(), "Item Added", "N/A", itemPrice, "No");
@@ -2743,7 +3144,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
         { text: "Cancel", "style": "cancel" },
         {
           text: "Delete",
-          onPress: async () => { // Made async
+          onPress: async () => {
             const updatedMenuData = { ...menuData };
             const category = updatedMenuData.categories.find(cat => cat.name === categoryName);
             if (category) {
@@ -2756,7 +3157,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
 
                 brand.items = brand.items.filter(itemObj => itemObj.name !== itemName);
                 setMenuData(updatedMenuData);
-                await saveMenus(updatedMenuData); // Await save
+                await saveMenus(updatedMenuData);
 
                 if (categoryName !== 'Clips, etc.' && categoryName !== 'Other') {
                   setInventory(prevInventory => {
@@ -2770,10 +3171,9 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
                         }
                       }
                     }
-                    // saveInventory(newInventory); // Removed direct save here
+                    saveInventory(newInventory);
                     return newInventory;
                   });
-                  await saveInventory(inventory); // Save after setInventory has processed
                 }
                 addToLog("Menu Changed", "N/A", categoryName, brandName, itemName, "Item Deleted", "N/A", "N/A", "No");
               }
@@ -2951,7 +3351,7 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
 };
 
 // --- Development Screen Component ---
-const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashierNumber, colorScheme, setColorScheme, saveColorScheme, showMenuManagementView, populateExampleItems, exportConfig, importConfig, isEditModeEnabled, colors }) => {
+const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashierNumber, colorScheme, setColorScheme, saveColorScheme, showMenuManagementView, showCashierManagementView, populateExampleItems, exportConfig, importConfig, isEditModeEnabled, colors }) => {
   const handleSetCashierNumber = () => {
     Alert.alert("Set Cashier Number", `Cashier number set to: ${cashierNumber}`);
   };
@@ -3024,6 +3424,9 @@ const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashi
 
       <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, marginTop: 20 }]} onPress={showMenuManagementView}>
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Go to Menu Management</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, marginTop: 10 }]} onPress={showCashierManagementView}>
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>Go to Cashier Management</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -3184,6 +3587,241 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, a
   );
 };
 
+// --- Cashier Management Screen Component ---
+const CashierManagementScreen = ({ cashiers, setCashiers, saveCashiers, showDevelopmentView, colors }) => {
+  const [isWizardVisible, setWizardVisible] = useState(false);
+  const [editingCashier, setEditingCashier] = useState(null);
+
+  const handleAddOrUpdateCashier = (cashierData) => {
+    let updatedCashiers;
+    if (editingCashier) {
+      // Update existing cashier
+      updatedCashiers = cashiers.map(c => c.code === editingCashier.code ? { ...c, ...cashierData } : c);
+    } else {
+      // Add new cashier
+      const newCode = String(Math.floor(1000 + Math.random() * 9000));
+      if (cashiers.some(c => c.code === newCode)) {
+        // Handle rare case of duplicate random code
+        handleAddOrUpdateCashier(cashierData);
+        return;
+      }
+      updatedCashiers = [...cashiers, { ...cashierData, code: newCode }];
+    }
+    setCashiers(updatedCashiers);
+    saveCashiers(updatedCashiers);
+    setWizardVisible(false);
+    setEditingCashier(null);
+  };
+
+  const handleRemoveCashier = (cashierCode) => {
+    Alert.alert(
+      "Remove Cashier",
+      "Are you sure you want to remove this cashier? This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          onPress: () => {
+            const updatedCashiers = cashiers.filter(c => c.code !== cashierCode);
+            setCashiers(updatedCashiers);
+            saveCashiers(updatedCashiers);
+          },
+        },
+      ]
+    );
+  };
+
+  return (
+    <View style={styles.contentContainer}>
+      <Text style={[styles.title, { color: colors.text }]}>Cashier Management</Text>
+      <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={() => { setEditingCashier(null); setWizardVisible(true); }}>
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>Add New Cashier</Text>
+      </TouchableOpacity>
+
+      <FlatList
+        style={[styles.logContainer, { backgroundColor: colors.cardBg }]}
+        data={cashiers}
+        keyExtractor={(item) => item.code}
+        renderItem={({ item }) => (
+          <View style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.listItemText, { color: colors.text }]}>{item.name}</Text>
+              <Text style={{ color: colors.logDetails }}>Code: {item.code}</Text>
+            </View>
+            <TouchableOpacity style={[styles.smallActionButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={() => { setEditingCashier(item); setWizardVisible(true); }}>
+              <Text style={[styles.smallButtonText, { color: colors.headerText }]}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.smallActionButton, { backgroundColor: colors.buttonBgDanger, marginLeft: 10 }]} onPress={() => handleRemoveCashier(item.code)}>
+              <Text style={[styles.smallButtonText, { color: colors.headerText }]}>Remove</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      />
+
+      <CashierWizardModal
+        isVisible={isWizardVisible}
+        onClose={() => { setWizardVisible(false); setEditingCashier(null); }}
+        onSave={handleAddOrUpdateCashier}
+        existingCashier={editingCashier}
+        colors={colors}
+      />
+
+      <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showDevelopmentView}>
+        <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Dev Menu'}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// --- Cashier Wizard Modal Component ---
+const CashierWizardModal = ({ isVisible, onClose, onSave, existingCashier, colors }) => {
+  const [name, setName] = useState('');
+
+  useEffect(() => {
+    if (existingCashier) {
+      setName(existingCashier.name);
+    } else {
+      setName('');
+    }
+  }, [existingCashier, isVisible]);
+
+  const handleSave = () => {
+    if (name.trim()) {
+      onSave({ name: name.trim() });
+    } else {
+      Alert.alert("Invalid Name", "Cashier name cannot be empty.");
+    }
+  };
+
+  return (
+    <Modal visible={isVisible} transparent={true} animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.centeredView}>
+        <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>{existingCashier ? 'Edit Cashier' : 'New Cashier Wizard'}</Text>
+          <TextInput
+            style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+            placeholder="Cashier Name"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="words"
+          />
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleSave}>
+            <Text style={[styles.buttonText, { color: colors.headerText }]}>Save</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgDanger }]} onPress={onClose}>
+            <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+};
+
+// --- Time Clock Dev Menu Component ---
+const TimeClockDevMenu = ({ appConfig, setAppConfig, saveAppConfig, showTimeClockView, colors }) => {
+  const togglePunchEditing = (value) => {
+    const newConfig = { ...appConfig, allowPunchEditing: value };
+    setAppConfig(newConfig);
+    saveAppConfig(newConfig);
+  };
+
+  return (
+    <View style={styles.contentContainer}>
+      <Text style={[styles.title, { color: colors.text }]}>Time Clock Dev Menu</Text>
+      <View style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
+        <Text style={[styles.listItemText, { color: colors.text }]}>Allow Punch Editing</Text>
+        <Switch
+          value={appConfig.allowPunchEditing}
+          onValueChange={togglePunchEditing}
+        />
+      </View>
+      <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showTimeClockView}>
+        <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Time Clock'}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// --- Payroll Summary Screen Component ---
+const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors }) => {
+  const payrollData = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-11
+
+    // Period 1: 1st to 15th of the current month
+    const period1Start = new Date(year, month, 1);
+    const period1End = new Date(year, month, 16); // End is exclusive
+
+    // Period 2: 16th of last month to end of last month
+    const period2Start = new Date(year, month - 1, 16);
+    const period2End = new Date(year, month, 1); // End is exclusive
+
+    const calculateHours = (periodStart, periodEnd) => {
+      const totals = {};
+      cashiers.forEach(c => { totals[c.code] = { name: c.name, hours: 0 }; });
+
+      const relevantPunches = punches.filter(p => {
+        const punchTime = new Date(p.time);
+        return punchTime >= periodStart && punchTime < periodEnd;
+      });
+
+      Object.keys(totals).forEach(cashierCode => {
+        const cashierPunches = relevantPunches
+          .filter(p => p.cashierCode === cashierCode)
+          .sort((a, b) => new Date(a.time) - new Date(b.time));
+
+        let lastPunchInTime = null;
+        cashierPunches.forEach(punch => {
+          if (punch.type === 'IN') {
+            lastPunchInTime = new Date(punch.time).getTime();
+          } else if (punch.type === 'OUT' && lastPunchInTime) {
+            const punchOutTime = new Date(punch.time).getTime();
+            const hours = (punchOutTime - lastPunchInTime) / (1000 * 60 * 60);
+            totals[cashierCode].hours += Math.max(0, hours);
+            lastPunchInTime = null; // Reset after pairing
+          }
+        });
+      });
+      return Object.values(totals).filter(t => t.hours > 0);
+    };
+
+    return {
+      period1: {
+        title: `1st - 15th of ${period1Start.toLocaleString('default', { month: 'long' })}`,
+        data: calculateHours(period1Start, period1End),
+      },
+      period2: {
+        title: `16th - End of ${period2Start.toLocaleString('default', { month: 'long' })}`,
+        data: calculateHours(period2Start, period2End),
+      },
+    };
+  }, [punches, cashiers]);
+
+  const renderPeriod = ({ title, data }) => (
+    <View style={{ marginBottom: 20 }}>
+      <Text style={[styles.subtitle, { color: colors.text }]}>{title}</Text>
+      {data.length > 0 ? data.map(item => (
+        <View key={item.name} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
+          <Text style={[styles.listItemText, { color: colors.text }]}>{item.name}</Text>
+          <Text style={[styles.listItemText, { color: colors.text }]}>{item.hours.toFixed(2)} hours</Text>
+        </View>
+      )) : <Text style={[styles.listItemText, { color: colors.text }]}>No hours recorded for this period.</Text>}
+    </View>
+  );
+
+  return (
+    <ScrollView style={styles.contentContainer}>
+      <Text style={[styles.title, { color: colors.text }]}>Payroll Summary</Text>
+      {renderPeriod(payrollData.period1)}
+      {renderPeriod(payrollData.period2)}
+      <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showTimeClockView}>
+        <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Time Clock'}</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+};
+
 
 // --- Styles ---
 const styles = StyleSheet.create({
@@ -3204,35 +3842,32 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   header: {
-    padding: 20,
+    paddingVertical: 15,
+    paddingHorizontal: 10,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     flexDirection: 'row',
-    position: 'relative',
   },
   headerText: {
     fontSize: 24,
     fontWeight: 'bold',
   },
+  headerRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   devButton: {
-    position: 'absolute',
-    right: 15,
-    top: 20,
     paddingVertical: 5,
     paddingHorizontal: 10,
     borderRadius: 5,
+    marginLeft: 10,
   },
   devButtonText: {
     fontSize: 14,
     fontWeight: 'bold',
   },
-  editModeButton: {
-    position: 'absolute',
-    left: 15,
-    top: 20,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+  headerIconButton: {
     padding: 8,
-    borderRadius: 5,
   },
   contentContainer: {
     flex: 1,
@@ -3273,6 +3908,7 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 16,
     fontWeight: '500',
+    textAlign: 'center',
   },
   itemCodeSmall: {
     fontSize: 10,
@@ -3298,8 +3934,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-  downloadInventoryButton: {
-  },
   backButton: {
     padding: 15,
     alignItems: 'center',
@@ -3322,27 +3956,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingBottom: Platform.OS === 'ios' ? 20 : 10,
   },
-  logButton: {
+  footerButton: {
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
     flex: 1,
-    marginRight: 5,
-  },
-  inventoryButton: {
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    flex: 1,
-    marginLeft: 5,
-    marginRight: 5,
-  },
-  layawayButton: {
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    flex: 1,
-    marginLeft: 5,
+    marginHorizontal: 2,
   },
   saleActionsContainer: {
     flex: 1,
@@ -3477,14 +4096,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1,
   },
-  sellButton: {
-    backgroundColor: '#e74c3c',
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 5,
-    marginLeft: 10,
-    alignItems: 'center',
-  },
   fileListContainer: {
     flex: 1,
     borderRadius: 10,
@@ -3584,13 +4195,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginRight: 10,
   },
-  pickerButtonSelected: {
-  },
   pickerButtonText: {
     fontSize: 14,
-  },
-  pickerButtonTextSelected: {
-    fontWeight: 'bold',
   },
   editModeWarning: {
     padding: 10,
@@ -3632,39 +4238,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 5,
   },
-  currentSaleItemsContainer: {
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    paddingVertical: 10,
-    marginBottom: 10,
-    borderRadius: 10,
-    paddingHorizontal: 15,
-  },
-  currentSaleItemsTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  currentSaleItemsScroll: {
-    maxHeight: 150,
-  },
-  currentSaleItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-  },
-  currentSaleItemText: {
-    fontSize: 14,
-    flex: 1,
-  },
-  removeSaleItemButton: {
-    padding: 5,
-    borderRadius: 5,
-    marginLeft: 10,
-  },
   centeredView: {
     flex: 1,
     justifyContent: 'center',
@@ -3702,13 +4275,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    width: '100%', // Ensure it takes full width of modal
+    width: '100%',
   },
   modalButton: {
     paddingVertical: 12,
     paddingHorizontal: 10,
     borderRadius: 10,
-    width: '48%', // Two buttons per row
+    width: '48%',
     alignItems: 'center',
     marginBottom: 10,
   },
@@ -3733,11 +4306,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     marginHorizontal: 5,
-  },
-  currentSaleTotalText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 15,
   },
   mostRecentSaleContainer: {
     padding: 10,
@@ -3806,7 +4374,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-around',
     paddingVertical: 10,
-    minHeight: 200, // Ensure minimum height for chart
+    minHeight: 200,
   },
   barWrapper: {
     alignItems: 'center',
@@ -3825,10 +4393,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginTop: 5,
     textAlign: 'center',
-    maxWidth: 60, // Limit width to prevent overflow
+    maxWidth: 60,
   },
   chartScrollViewContent: {
-    alignItems: 'flex-end', // Align bars to bottom
+    alignItems: 'flex-end',
   },
   chartNoDataText: {
     fontSize: 16,
@@ -3845,10 +4413,33 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 5,
   },
-  // New style for the 'View Graph' button to shrink it vertically
   graphButton: {
-    paddingVertical: 10, // Reduced padding
-  }
+    paddingVertical: 10,
+  },
+  timeClockButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 20,
+  },
+  timeClockButton: {
+    flex: 1,
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
+  timeClockPunchItem: {
+    padding: 10,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timeClockNavButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 20,
+  },
 });
 
 export default App;
