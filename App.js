@@ -94,14 +94,15 @@ const COLOR_PALETTES = {
     warningText: '#ffcc80',
   },
   pastel: {
-    background: '#fef7f9', text: '#4a2a4e', headerBg: '#e0b2d9', headerText: '#ffffff',
+    background: '#fef7f9', text: '#4a2a4e', headerBg: '#e0b2d9', headerText: '#4a2a4e', // Changed headerText to dark
     buttonBgPrimary: '#a7d9b5', buttonBgSecondary: '#f7b7d3', buttonBgTertiary: '#c2a7d9',
     buttonBgDanger: '#f2a0a0', buttonBgLight: '#d9d9d9', inputBg: '#ffffff',
     inputBorder: '#e0e0e0', logEntryBg: '#ffffff', logEntryBorder: '#f0e0f5',
     logTimestamp: '#6a5a76', logAction: '#5d4c6b', logDetails: '#867b98',
     cardBg: '#ffffff', cardBorder: '#e0e0e0', shadowColor: '#b19cd9',
     pickerBg: '#e0e0e0', pickerText: '#4a2a4e', pickerSelectedBg: '#e0b2d9',
-    pickerSelectedText: '#ffffff', warningBg: '#ffe0e6', warningBorder: '#fcc6d4',
+    pickerSelectedText: '#4a2a4e', // Changed pickerSelectedText to dark
+    warningBg: '#ffe0e6', warningBorder: '#fcc6d4',
     warningText: '#c45a7d',
   }
 };
@@ -2369,10 +2370,22 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
   const [showCashierSelection, setShowCashierSelection] = useState(true);
   const [editingPunch, setEditingPunch] = useState(null);
   const [editedPunchDate, setEditedPunchDate] = useState(new Date());
+  const [isClockedIn, setIsClockedIn] = useState(false);
 
   const handleSelectCashier = (cashier) => {
     setActiveCashier(cashier);
     setShowCashierSelection(false);
+
+    // Determine if the selected cashier is currently clocked in
+    const cashierPunches = punches
+      .filter(p => p.cashierCode === cashier.code)
+      .sort((a, b) => new Date(b.time) - new Date(a.time));
+
+    if (cashierPunches.length > 0 && cashierPunches[0].type === 'IN') {
+      setIsClockedIn(true);
+    } else {
+      setIsClockedIn(false);
+    }
   };
 
   const handlePunch = (type) => {
@@ -2394,6 +2407,7 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
     const newPunches = [...punches, newPunch];
     setPunches(newPunches);
     savePunches(newPunches);
+    setIsClockedIn(type === 'IN'); // Update the clocked-in status
     Alert.alert("Success", `${activeCashier.name} punched ${type.toLowerCase()} at ${new Date().toLocaleTimeString()}`);
   };
 
@@ -2449,12 +2463,6 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
                 <Text style={[styles.modalSubtitle, { color: colors.text }]}>
                   No cashiers found. Please add a cashier to use the Time Clock.
                 </Text>
-                <TouchableOpacity
-                  style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary, width: '100%' }]}
-                  onPress={showCashierManagementView}
-                >
-                  <Text style={[styles.buttonText, { color: colors.headerText }]}>Go to Cashier Setup</Text>
-                </TouchableOpacity>
               </View>
             ) : (
               <ScrollView style={{ width: '100%' }}>
@@ -2469,7 +2477,13 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
                 ))}
               </ScrollView>
             )}
-            <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showMainView}>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, width: '100%', marginTop: 10 }]}
+              onPress={showCashierManagementView}
+            >
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Manage Cashiers</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary, width: '100%' }]} onPress={showMainView}>
               <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Main App'}</Text>
             </TouchableOpacity>
           </View>
@@ -2486,10 +2500,18 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
       </Text>
 
       <View style={styles.timeClockButtonRow}>
-        <TouchableOpacity style={[styles.timeClockButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={() => handlePunch('IN')}>
+        <TouchableOpacity
+          style={[styles.timeClockButton, { backgroundColor: colors.buttonBgPrimary, opacity: isClockedIn ? 0.5 : 1 }]}
+          onPress={() => handlePunch('IN')}
+          disabled={isClockedIn}
+        >
           <Text style={[styles.buttonText, { color: colors.headerText }]}>Punch IN</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.timeClockButton, { backgroundColor: colors.buttonBgDanger }]} onPress={() => handlePunch('OUT')}>
+        <TouchableOpacity
+          style={[styles.timeClockButton, { backgroundColor: colors.buttonBgDanger, opacity: !isClockedIn ? 0.5 : 1 }]}
+          onPress={() => handlePunch('OUT')}
+          disabled={!isClockedIn}
+        >
           <Text style={[styles.buttonText, { color: colors.headerText }]}>Punch OUT</Text>
         </TouchableOpacity>
       </View>
@@ -3499,10 +3521,6 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
 
 // --- Development Screen Component ---
 const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashierNumber, colorScheme, setColorScheme, saveColorScheme, showMenuManagementView, showCashierManagementView, populateExampleItems, exportConfig, importConfig, isEditModeEnabled, colors }) => {
-  const handleSetCashierNumber = () => {
-    Alert.alert("Set Cashier Number", `Cashier number set to: ${cashierNumber}`);
-  };
-
   const handleSetColorScheme = (scheme) => {
     setColorScheme(scheme);
     saveColorScheme(scheme);
@@ -3550,24 +3568,6 @@ const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashi
           <Text style={[styles.buttonText, { color: colors.text }, colorScheme === 'pastel' && { color: colors.pickerSelectedText }]}>Pastel Mode</Text>
         </TouchableOpacity>
       </View>
-
-      <Text style={[styles.subtitle, { color: colors.text }]}>Set Cashier Number</Text>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
-        <TextInput
-          style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-          placeholder="Enter Cashier Number"
-          placeholderTextColor={colors.logDetails}
-          keyboardType="numeric"
-          value={cashierNumber}
-          onChangeText={setCashierNumber}
-        />
-        <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={handleSetCashierNumber}>
-          <Text style={[styles.buttonText, { color: colors.headerText }]}>Set Cashier: {cashierNumber}</Text>
-        </TouchableOpacity>
-      </KeyboardAvoidingView>
 
       <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, marginTop: 20 }]} onPress={showMenuManagementView}>
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Go to Menu Management</Text>
