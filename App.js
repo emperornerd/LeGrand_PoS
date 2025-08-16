@@ -1272,6 +1272,7 @@ const App = () => {
           saveCashiers={saveCashiers}
           showDevelopmentView={showDevelopmentView}
           colors={colors}
+          isEditModeEnabled={isEditModeEnabled}
         />
       ) : currentView === 'time_clock_dev_menu' ? (
         <TimeClockDevMenu
@@ -4268,7 +4269,7 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, a
 };
 
 // --- Cashier Management Screen Component ---
-const CashierManagementScreen = ({ cashiers, setCashiers, saveCashiers, showDevelopmentView, colors }) => {
+const CashierManagementScreen = ({ cashiers, setCashiers, saveCashiers, showDevelopmentView, colors, isEditModeEnabled }) => {
   const [isWizardVisible, setWizardVisible] = useState(false);
   const [editingCashier, setEditingCashier] = useState(null);
 
@@ -4314,9 +4315,11 @@ const CashierManagementScreen = ({ cashiers, setCashiers, saveCashiers, showDeve
   return (
     <View style={styles.contentContainer}>
       <Text style={[styles.title, { color: colors.text }]}>Cashier Management</Text>
-      <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={() => { setEditingCashier(null); setWizardVisible(true); }}>
-        <Text style={[styles.buttonText, { color: colors.headerText }]}>Add New Cashier</Text>
-      </TouchableOpacity>
+      {isEditModeEnabled && (
+        <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={() => { setEditingCashier(null); setWizardVisible(true); }}>
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>Add New Cashier</Text>
+        </TouchableOpacity>
+      )}
 
       <FlatList
         style={[styles.logContainer, { backgroundColor: colors.cardBg }]}
@@ -4328,12 +4331,16 @@ const CashierManagementScreen = ({ cashiers, setCashiers, saveCashiers, showDeve
               <Text style={[styles.listItemText, { color: colors.text }]}>{item.name}</Text>
               <Text style={{ color: colors.logDetails }}>Code: {item.code}</Text>
             </View>
-            <TouchableOpacity style={[styles.smallActionButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={() => { setEditingCashier(item); setWizardVisible(true); }}>
-              <Text style={[styles.smallButtonText, { color: colors.headerText }]}>Edit</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.smallActionButton, { backgroundColor: colors.buttonBgDanger, marginLeft: 10 }]} onPress={() => handleRemoveCashier(item.code)}>
-              <Text style={[styles.smallButtonText, { color: colors.headerText }]}>Remove</Text>
-            </TouchableOpacity>
+            {isEditModeEnabled && (
+              <>
+                <TouchableOpacity style={[styles.smallActionButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={() => { setEditingCashier(item); setWizardVisible(true); }}>
+                  <Text style={[styles.smallButtonText, { color: colors.headerText }]}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.smallActionButton, { backgroundColor: colors.buttonBgDanger, marginLeft: 10 }]} onPress={() => handleRemoveCashier(item.code)}>
+                  <Text style={[styles.smallButtonText, { color: colors.headerText }]}>Remove</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
       />
