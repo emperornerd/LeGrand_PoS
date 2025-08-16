@@ -1032,7 +1032,7 @@ const App = () => {
     };
     setCurrentSaleItems(prevItems => [...prevItems, saleItem]);
     setCurrentSaleTotal(prevTotal => prevTotal + paymentAmount);
-    addToLog("Layaway Payment (Added to Sale)", layawayItem.itemCode, layawayItem.category, layawayItem.brand, layawayItem.item, 'N/A', 'N/A', paymentAmount, 'Layaway Payment');
+    // Log is now handled in handleEndSale
     setCurrentView('main');
   };
 
@@ -2052,8 +2052,6 @@ const MainScreen = ({
         lastChangeDate: new Date().toLocaleString()
       }, inventory);
       setInventory(updatedInventory);
-    } else {
-      addToLog("Item Added to Sale (No Inventory Track)", itemData.itemCode, category, brand, item, 'N/A', 'N/A', priceSold, discountApplied);
     }
 
     setSelectedCategory(null);
@@ -2112,8 +2110,6 @@ const MainScreen = ({
     setCurrentSaleItems(prevItems => [...prevItems, saleItem]);
     setCurrentSaleTotal(prevTotal => prevTotal + downPayment);
 
-    addToLog("Layaway Initiated (Pending Sale)", itemData.itemCode, category, brand, item, 'N/A', 'N/A', downPayment, '30% Down');
-
     Alert.alert(
       "Layaway Initiated",
       `${item} placed on layaway. Down payment of $${downPayment.toFixed(2)} added to current sale.`
@@ -2160,9 +2156,6 @@ const MainScreen = ({
 
             if (lastItem.isLayawayDownPayment) {
               setLayawayItems(prev => prev.filter(item => item.layawayId !== lastItem.layawayId));
-              addToLog("Layaway Initiation Undone", lastItem.itemCode, lastItem.category, lastItem.brand, lastItem.item, 'N/A', 'N/A', lastItem.priceSold, 'Undo');
-            } else {
-              addToLog("Item Removed from Sale", lastItem.itemCode, lastItem.category, lastItem.brand, lastItem.item, 'N/A', 'N/A', lastItem.priceSold, 'Undo');
             }
 
             setCurrentSaleItems(prevItems => prevItems.slice(0, -1));
@@ -2285,8 +2278,8 @@ const MainScreen = ({
               }
               if (saleItem.isLayawayDownPayment) {
                 layawaysToRevert = layawaysToRevert.filter(l => l.layawayId !== saleItem.layawayId);
+                addToLog("Layaway Cancelled", saleItem.itemCode, saleItem.category, saleItem.brand, saleItem.item, 'N/A', 'N/A', saleItem.priceSold, 'Cancelled');
               }
-              addToLog("Sale Cancelled", saleItem.itemCode, saleItem.category, saleItem.brand, saleItem.item, 'N/A', 'N/A', saleItem.priceSold, 'Cancelled');
             }
 
             setInventory(inventoryToRevert);
@@ -3409,6 +3402,9 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
 const FileManagementScreen = ({ showLogView, colors }) => {
   const [logFiles, setLogFiles] = useState([]);
   const [selectedFileContent, setSelectedFileContent] = useState(null);
+  const [showSalesGraphModal, setShowSalesGraphModal] = useState(false);
+  const [salesGraphData, setSalesGraphData] = useState([]);
+  const [maxSaleValue, setMaxSaleValue] = useState(1);
 
   useEffect(() => {
     listLogFiles();
@@ -3426,6 +3422,55 @@ const FileManagementScreen = ({ showLogView, colors }) => {
       console.error("Failed to list log files:", e);
       Alert.alert("Error", "Failed to list log files.");
     }
+  };
+
+  const generateSalesGraphData = async () => {
+    const salesByDay = {};
+    let currentMax = 0;
+
+    for (const fileName of logFiles) {
+        const filePath = LOG_DIRECTORY + fileName;
+        try {
+            const content = await FileSystem.readAsStringAsync(filePath);
+            const lines = content.split('\n').slice(1); // Skip header
+            let dailyTotal = 0;
+
+            lines.forEach(line => {
+                const parts = line.split(',');
+                if (parts.length >= 9) {
+                    const priceSold = parseFloat(parts[8]);
+                    if (!isNaN(priceSold)) {
+                        dailyTotal += priceSold;
+                    }
+                }
+            });
+
+            const dateMatch = fileName.match(/(\d{4}-\d{2}-\d{2})/);
+            if (dateMatch) {
+                const date = dateMatch[1];
+                salesByDay[date] = (salesByDay[date] || 0) + dailyTotal;
+            }
+        } catch (e) {
+            console.error(`Failed to process log file ${fileName}:`, e);
+        }
+    }
+
+    const dataForChart = Object.keys(salesByDay)
+        .sort()
+        .map(date => {
+            const total = salesByDay[date];
+            if (total > currentMax) {
+                currentMax = total;
+            }
+            return {
+                label: date,
+                value: parseFloat(total.toFixed(2))
+            };
+        });
+
+    setSalesGraphData(dataForChart);
+    setMaxSaleValue(currentMax > 0 ? currentMax : 1);
+    setShowSalesGraphModal(true);
   };
 
   const readAndDisplayFile = async (fileName) => {
@@ -3518,7 +3563,12 @@ const FileManagementScreen = ({ showLogView, colors }) => {
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Export Inventory as CSV</Text>
       </TouchableOpacity>
 
-      <Text style={[styles.subtitle, { color: colors.text }]}>Previous Log Files:</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={[styles.subtitle, { color: colors.text }]}>Previous Log Files:</Text>
+        <TouchableOpacity onPress={generateSalesGraphData}>
+            <MaterialIcons name="bar-chart" size={24} color={colors.text} />
+        </TouchableOpacity>
+      </View>
       <ScrollView style={[styles.fileListContainer, { backgroundColor: colors.cardBg }]}>
         {logFiles.length > 0 ? (
           logFiles.map((fileName) => (
@@ -3561,6 +3611,14 @@ const FileManagementScreen = ({ showLogView, colors }) => {
         <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Activity Log'}</Text>
       </TouchableOpacity>
       <View style={styles.bottomBuffer} />
+      <SimpleBarChartModal
+        isVisible={showSalesGraphModal}
+        onClose={() => setShowSalesGraphModal(false)}
+        data={salesGraphData}
+        maxValue={maxSaleValue}
+        colors={colors}
+        title="Total Sales Per Day"
+      />
     </View>
   );
 };
@@ -4370,6 +4428,11 @@ const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors, ex
   const [graphData, setGraphData] = useState([]);
   const [graphTitle, setGraphTitle] = useState('');
   const [maxHours, setMaxHours] = useState(1);
+  const [showShiftDetailModal, setShowShiftDetailModal] = useState(false);
+  const [selectedCashierShifts, setSelectedCashierShifts] = useState({ cashierName: '', shifts: [] });
+  const [showAllPunchesModal, setShowAllPunchesModal] = useState(false);
+  const [allPunchesForPeriod, setAllPunchesForPeriod] = useState([]);
+
 
   const payrollData = useMemo(() => {
     const now = new Date();
@@ -4385,12 +4448,12 @@ const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors, ex
         start: new Date(year, month, 1),
         end: new Date(year, month, 15) // Exclusive end
       };
-      const prevMonthEnd = new Date(year, month, 1);
+      const prevMonthEnd = new Date(year, month, 0); // Last day of previous month
       const prevMonthStart = new Date(year, month - 1, 15);
       period2 = {
         title: `15th - End of ${prevMonthStart.toLocaleString('default', { month: 'long' })}`,
         start: prevMonthStart,
-        end: prevMonthEnd
+        end: new Date(year, month, 1)
       };
     } else { // Current period is 15th-end
       period1 = {
@@ -4407,7 +4470,7 @@ const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors, ex
 
     const calculateHours = (period) => {
       const totals = {};
-      cashiers.forEach(c => { totals[c.code] = { name: c.name, hours: 0 }; });
+      cashiers.forEach(c => { totals[c.code] = { name: c.name, hours: 0, code: c.code }; });
 
       const relevantPunches = punches.filter(p => {
         const punchTime = new Date(p.time);
@@ -4453,6 +4516,52 @@ const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors, ex
     setShowGraphModal(true);
   };
 
+  const handleShowShiftDetails = (cashierCode, period) => {
+    const cashier = cashiers.find(c => c.code === cashierCode);
+    if (!cashier) return;
+
+    const relevantPunches = punches
+      .filter(p => p.cashierCode === cashierCode && new Date(p.time) >= period.start && new Date(p.time) < period.end)
+      .sort((a, b) => new Date(a.time) - new Date(b.time));
+
+    const shifts = [];
+    let lastPunchIn = null;
+    relevantPunches.forEach(punch => {
+      if (punch.type === 'IN') {
+        lastPunchIn = punch;
+      } else if (punch.type === 'OUT' && lastPunchIn) {
+        const duration = (new Date(punch.time).getTime() - new Date(lastPunchIn.time).getTime()) / (1000 * 60 * 60);
+        shifts.push({
+          id: lastPunchIn.id,
+          date: new Date(lastPunchIn.time).toLocaleDateString(),
+          in: new Date(lastPunchIn.time).toLocaleTimeString(),
+          out: new Date(punch.time).toLocaleTimeString(),
+          duration: duration.toFixed(2),
+        });
+        lastPunchIn = null;
+      }
+    });
+
+    setSelectedCashierShifts({ cashierName: cashier.name, shifts });
+    setShowShiftDetailModal(true);
+  };
+
+  const handleShowAllPunches = () => {
+    const allRelevantPunches = punches
+      .filter(p => {
+        const punchTime = new Date(p.time);
+        return (punchTime >= payrollData.current.start && punchTime < payrollData.current.end) ||
+               (punchTime >= payrollData.previous.start && punchTime < payrollData.previous.end);
+      })
+      .sort((a, b) => new Date(a.time) - new Date(b.time))
+      .map(p => ({
+        ...p,
+        cashierName: cashiers.find(c => c.code === p.cashierCode)?.name || 'Unknown'
+      }));
+    setAllPunchesForPeriod(allRelevantPunches);
+    setShowAllPunchesModal(true);
+  };
+
   const renderPeriod = (period) => (
     <View style={{ marginBottom: 20 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -4462,10 +4571,12 @@ const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors, ex
         </TouchableOpacity>
       </View>
       {period.data.length > 0 ? period.data.map(item => (
-        <View key={item.name} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
-          <Text style={[styles.listItemText, { color: colors.text }]}>{item.name}</Text>
-          <Text style={[styles.listItemText, { color: colors.text }]}>{item.hours.toFixed(2)} hours</Text>
-        </View>
+        <TouchableOpacity key={item.name} onPress={() => handleShowShiftDetails(item.code, period)}>
+            <View style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
+              <Text style={[styles.listItemText, { color: colors.text }]}>{item.name}</Text>
+              <Text style={[styles.listItemText, { color: colors.text }]}>{item.hours.toFixed(2)} hours</Text>
+            </View>
+        </TouchableOpacity>
       )) : <Text style={[styles.listItemText, { color: colors.text }]}>No hours recorded for this period.</Text>}
     </View>
   );
@@ -4475,6 +4586,12 @@ const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors, ex
       <Text style={[styles.title, { color: colors.text }]}>Payroll Summary</Text>
       {renderPeriod(payrollData.current)}
       {renderPeriod(payrollData.previous)}
+      <TouchableOpacity
+        style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary }]}
+        onPress={handleShowAllPunches}
+      >
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>View All Punch Activity</Text>
+      </TouchableOpacity>
       <TouchableOpacity
         style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]}
         onPress={exportPunchesAsCsv}
@@ -4493,7 +4610,82 @@ const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors, ex
         colors={colors}
         title={graphTitle}
       />
+      <ShiftDetailModal
+        isVisible={showShiftDetailModal}
+        onClose={() => setShowShiftDetailModal(false)}
+        data={selectedCashierShifts}
+        colors={colors}
+      />
+      <AllPunchesModal
+        isVisible={showAllPunchesModal}
+        onClose={() => setShowAllPunchesModal(false)}
+        punches={allPunchesForPeriod}
+        colors={colors}
+      />
     </ScrollView>
+  );
+};
+
+// --- Shift Detail Modal Component ---
+const ShiftDetailModal = ({ isVisible, onClose, data, colors }) => {
+  const { cashierName, shifts } = data;
+  return (
+    <Modal visible={isVisible} transparent={true} animationType="fade" onRequestClose={onClose}>
+      <View style={styles.centeredView}>
+        <View style={[styles.modalView, { backgroundColor: colors.cardBg, maxHeight: '80%' }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>{cashierName}'s Shifts</Text>
+          <FlatList
+            style={{ width: '100%' }}
+            data={shifts}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <View style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
+                <View>
+                  <Text style={[styles.listItemText, { color: colors.text, fontWeight: 'bold' }]}>{item.date}</Text>
+                  <Text style={{ color: colors.logDetails }}>In: {item.in}, Out: {item.out}</Text>
+                </View>
+                <Text style={[styles.listItemText, { color: colors.text }]}>{item.duration} hrs</Text>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={[styles.listItemText, { color: colors.text, textAlign: 'center' }]}>No completed shifts in this period.</Text>}
+          />
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgSecondary, marginTop: 20, width: '100%' }]} onPress={onClose}>
+            <Text style={[styles.buttonText, { color: colors.headerText }]}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// --- All Punches Modal Component ---
+const AllPunchesModal = ({ isVisible, onClose, punches, colors }) => {
+  return (
+    <Modal visible={isVisible} transparent={true} animationType="fade" onRequestClose={onClose}>
+      <View style={styles.centeredView}>
+        <View style={[styles.modalView, { backgroundColor: colors.cardBg, maxHeight: '80%' }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>All Punch Activity</Text>
+          <Text style={[styles.modalSubtitle, { color: colors.text, fontSize: 14 }]}>Current & Previous Pay Periods</Text>
+          <FlatList
+            style={{ width: '100%' }}
+            data={punches}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <View style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
+                <View>
+                  <Text style={[styles.listItemText, { color: colors.text, fontWeight: 'bold' }]}>{item.cashierName} - {item.type}</Text>
+                  <Text style={{ color: colors.logDetails }}>{new Date(item.time).toLocaleString()}</Text>
+                </View>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={[styles.listItemText, { color: colors.text, textAlign: 'center' }]}>No punches in these periods.</Text>}
+          />
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgSecondary, marginTop: 20, width: '100%' }]} onPress={onClose}>
+            <Text style={[styles.buttonText, { color: colors.headerText }]}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
   );
 };
 
