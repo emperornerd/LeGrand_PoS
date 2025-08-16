@@ -1241,6 +1241,7 @@ const App = () => {
           showMainView={showMainView}
           isEditModeEnabled={isEditModeEnabled}
           colors={colors}
+          updateInventoryState={updateInventoryState}
         />
       ) : currentView === 'layaway_management' ? (
         <LayawayManagementScreen
@@ -3403,9 +3404,6 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
 const FileManagementScreen = ({ showLogView, colors }) => {
   const [logFiles, setLogFiles] = useState([]);
   const [selectedFileContent, setSelectedFileContent] = useState(null);
-  const [showSalesGraphModal, setShowSalesGraphModal] = useState(false);
-  const [salesGraphData, setSalesGraphData] = useState([]);
-  const [maxSaleValue, setMaxSaleValue] = useState(1);
 
   useEffect(() => {
     listLogFiles();
@@ -3423,55 +3421,6 @@ const FileManagementScreen = ({ showLogView, colors }) => {
       console.error("Failed to list log files:", e);
       Alert.alert("Error", "Failed to list log files.");
     }
-  };
-
-  const generateSalesGraphData = async () => {
-    const salesByDay = {};
-    let currentMax = 0;
-
-    for (const fileName of logFiles) {
-        const filePath = LOG_DIRECTORY + fileName;
-        try {
-            const content = await FileSystem.readAsStringAsync(filePath);
-            const lines = content.split('\n').slice(1); // Skip header
-            let dailyTotal = 0;
-
-            lines.forEach(line => {
-                const parts = line.split(',');
-                if (parts.length >= 9) {
-                    const priceSold = parseFloat(parts[8]);
-                    if (!isNaN(priceSold)) {
-                        dailyTotal += priceSold;
-                    }
-                }
-            });
-
-            const dateMatch = fileName.match(/(\d{4}-\d{2}-\d{2})/);
-            if (dateMatch) {
-                const date = dateMatch[1];
-                salesByDay[date] = (salesByDay[date] || 0) + dailyTotal;
-            }
-        } catch (e) {
-            console.error(`Failed to process log file ${fileName}:`, e);
-        }
-    }
-
-    const dataForChart = Object.keys(salesByDay)
-        .sort()
-        .map(date => {
-            const total = salesByDay[date];
-            if (total > currentMax) {
-                currentMax = total;
-            }
-            return {
-                label: date,
-                value: parseFloat(total.toFixed(2))
-            };
-        });
-
-    setSalesGraphData(dataForChart);
-    setMaxSaleValue(currentMax > 0 ? currentMax : 1);
-    setShowSalesGraphModal(true);
   };
 
   const readAndDisplayFile = async (fileName) => {
@@ -3564,12 +3513,8 @@ const FileManagementScreen = ({ showLogView, colors }) => {
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Export Inventory as CSV</Text>
       </TouchableOpacity>
 
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={[styles.subtitle, { color: colors.text }]}>Previous Log Files:</Text>
-        <TouchableOpacity onPress={generateSalesGraphData}>
-            <MaterialIcons name="bar-chart" size={24} color={colors.text} />
-        </TouchableOpacity>
-      </View>
+      <Text style={[styles.subtitle, { color: colors.text }]}>Previous Log Files:</Text>
+
       <ScrollView style={[styles.fileListContainer, { backgroundColor: colors.cardBg }]}>
         {logFiles.length > 0 ? (
           logFiles.map((fileName) => (
@@ -3612,20 +3557,12 @@ const FileManagementScreen = ({ showLogView, colors }) => {
         <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Activity Log'}</Text>
       </TouchableOpacity>
       <View style={styles.bottomBuffer} />
-      <SimpleBarChartModal
-        isVisible={showSalesGraphModal}
-        onClose={() => setShowSalesGraphModal(false)}
-        data={salesGraphData}
-        maxValue={maxSaleValue}
-        colors={colors}
-        title="Total Sales Per Day"
-      />
     </View>
   );
 };
 
 // --- Menu Management Screen Component ---
-const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, setInventory, saveInventory, addToLog, showMainView, isEditModeEnabled, colors }) => {
+const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, setInventory, saveInventory, addToLog, showMainView, isEditModeEnabled, colors, updateInventoryState }) => {
   const [newCategoryInput, setNewCategoryInput] = useState('');
   const [selectedCategoryForBrand, setSelectedCategoryForBrand] = useState(null);
   const [newBrandInput, setNewBrandInput] = useState('');
