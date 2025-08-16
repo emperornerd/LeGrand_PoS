@@ -94,16 +94,44 @@ const COLOR_PALETTES = {
     warningText: '#ffcc80',
   },
   pastel: {
-    background: '#fef7f9', text: '#4a2a4e', headerBg: '#e0b2d9', headerText: '#4a2a4e', // Changed headerText to dark
+    background: '#fef7f9', text: '#4a2a4e', headerBg: '#e0b2d9', headerText: '#4a2a4e',
     buttonBgPrimary: '#a7d9b5', buttonBgSecondary: '#f7b7d3', buttonBgTertiary: '#c2a7d9',
     buttonBgDanger: '#f2a0a0', buttonBgLight: '#d9d9d9', inputBg: '#ffffff',
     inputBorder: '#e0e0e0', logEntryBg: '#ffffff', logEntryBorder: '#f0e0f5',
     logTimestamp: '#6a5a76', logAction: '#5d4c6b', logDetails: '#867b98',
     cardBg: '#ffffff', cardBorder: '#e0e0e0', shadowColor: '#b19cd9',
     pickerBg: '#e0e0e0', pickerText: '#4a2a4e', pickerSelectedBg: '#e0b2d9',
-    pickerSelectedText: '#4a2a4e', // Changed pickerSelectedText to dark
+    pickerSelectedText: '#4a2a4e',
     warningBg: '#ffe0e6', warningBorder: '#fcc6d4',
     warningText: '#c45a7d',
+  },
+  christmas: {
+    background: '#121212',
+    text: '#f0f0f0',
+    headerBg: '#B22222',
+    headerText: '#ffffff',
+    buttonBgPrimary: '#228B22',
+    buttonBgSecondary: '#FFD700',
+    buttonBgTertiary: '#808080',
+    buttonBgDanger: '#DC143C',
+    buttonBgLight: '#4a4a4a',
+    inputBg: '#2c2c2c',
+    inputBorder: '#555',
+    logEntryBg: '#2c2c2c',
+    logEntryBorder: '#444',
+    logTimestamp: '#f0f0f0',
+    logAction: '#cccccc',
+    logDetails: '#a9a9a9',
+    cardBg: '#2c2c2c',
+    cardBorder: '#444',
+    shadowColor: '#000',
+    pickerBg: '#4a4a4a',
+    pickerText: '#f0f0f0',
+    pickerSelectedBg: '#228B22',
+    pickerSelectedText: '#ffffff',
+    warningBg: '#4d0000',
+    warningBorder: '#990000',
+    warningText: '#ffcccb',
   }
 };
 
@@ -181,6 +209,25 @@ const EXAMPLE_MENUS = {
   ],
 };
 
+const EXAMPLE_CASHIERS = [
+  { name: 'Alice', code: '1001' },
+  { name: 'Bob', code: '1002' },
+  { name: 'Charlie', code: '1003' },
+  { name: 'Diana', code: '1004' },
+  { name: 'Edward', code: '1005' },
+];
+
+const EXAMPLE_PUNCHES = [
+  // Alice's punches
+  { id: `2023-10-26T09:00:00.000Z-1`, cashierCode: '1001', time: new Date(new Date().setDate(new Date().getDate() - 2)).setHours(9,0,0,0), type: 'IN' },
+  { id: `2023-10-26T17:00:00.000Z-1`, cashierCode: '1001', time: new Date(new Date().setDate(new Date().getDate() - 2)).setHours(17,0,0,0), type: 'OUT' },
+  { id: `2023-10-27T09:05:00.000Z-1`, cashierCode: '1001', time: new Date(new Date().setDate(new Date().getDate() - 1)).setHours(9,5,0,0), type: 'IN' },
+  { id: `2023-10-27T17:02:00.000Z-1`, cashierCode: '1001', time: new Date(new Date().setDate(new Date().getDate() - 1)).setHours(17,2,0,0), type: 'OUT' },
+  // Bob's punches
+  { id: `2023-10-26T10:00:00.000Z-2`, cashierCode: '1002', time: new Date(new Date().setDate(new Date().getDate() - 2)).setHours(10,0,0,0), type: 'IN' },
+  { id: `2023-10-26T15:30:00.000Z-2`, cashierCode: '1002', time: new Date(new Date().setDate(new Date().getDate() - 2)).setHours(15,30,0,0), type: 'OUT' },
+];
+
 
 // --- Main Application Component ---
 const App = () => {
@@ -215,6 +262,8 @@ const App = () => {
   // PSK Modal states
   const [showPSKModal, setShowPSKModal] = useState(false);
   const [showPSKVerifyModal, setShowPSKVerifyModal] = useState(false);
+  const [showPSKManageModal, setShowPSKManageModal] = useState(false);
+  const [pskManageMode, setPskManageMode] = useState('set'); // 'set', 'change', or 'remove'
 
 
   // --- File System Functions ---
@@ -821,16 +870,69 @@ const App = () => {
     );
   };
 
+  const populateExampleTimeData = async () => {
+    Alert.alert(
+      "Populate Example Time Data",
+      "This will ERASE all current cashiers and time punches and replace them with example data. Are you sure?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Populate",
+          onPress: async () => {
+            try {
+              setCashiers(EXAMPLE_CASHIERS);
+              setTimeClockPunches(EXAMPLE_PUNCHES);
+              await saveCashiers(EXAMPLE_CASHIERS);
+              await saveTimeClockPunches(EXAMPLE_PUNCHES);
+              Alert.alert("Success", "Example cashiers and time punches have been loaded.");
+            } catch (e) {
+              console.error("Failed to populate example time data:", e);
+              Alert.alert("Error", "Could not load example time data.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const clearAllPunchData = async () => {
+    Alert.alert(
+      "Clear All Punch Data",
+      "Are you sure you want to permanently delete ALL time clock punches? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete All",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setTimeClockPunches([]);
+              await saveTimeClockPunches([]);
+              Alert.alert("Success", "All time clock punch data has been deleted.");
+            } catch (e) {
+              console.error("Failed to clear punch data:", e);
+              Alert.alert("Error", "Could not clear punch data.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const exportConfig = async () => {
     try {
       const menuContent = await FileSystem.readAsStringAsync(MENUS_FILE);
       const inventoryContent = await FileSystem.readAsStringAsync(INVENTORY_FILE);
       const layawayContent = await FileSystem.readAsStringAsync(LAYAWAY_FILE);
+      const cashiersContent = await FileSystem.readAsStringAsync(CASHIERS_FILE);
+      const timeClockContent = await FileSystem.readAsStringAsync(TIMECLOCK_FILE);
 
       const configData = {
         menus: JSON.parse(menuContent),
         inventory: JSON.parse(inventoryContent),
-        layaway: JSON.parse(layawayContent)
+        layaway: JSON.parse(layawayContent),
+        cashiers: JSON.parse(cashiersContent),
+        timeclock: JSON.parse(timeClockContent),
       };
 
       await FileSystem.writeAsStringAsync(CONFIG_BACKUP_FILE, JSON.stringify(configData, null, 2));
@@ -845,7 +947,7 @@ const App = () => {
   const importConfig = async () => {
     Alert.alert(
       "Import Configuration",
-      "Are you sure you want to import configuration data? This will OVERWRITE your current menus, inventory, and layaway items. To import, you must first manually place the 'inventory_config_backup.json' file into this app's documents folder on your device.",
+      "This will OVERWRITE your current menus, inventory, layaway, cashiers, and time punches. To import, place 'inventory_config_backup.json' in the app's documents folder.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -855,7 +957,7 @@ const App = () => {
             try {
               const fileInfo = await FileSystem.getInfoAsync(CONFIG_BACKUP_FILE);
               if (!fileInfo.exists) {
-                Alert.alert("File Not Found", "Config backup file (inventory_config_backup.json) not found in the app's documents folder. Please ensure it is placed there manually before importing.");
+                Alert.alert("File Not Found", "Config backup file not found.");
                 setIsLoading(false);
                 return;
               }
@@ -863,20 +965,17 @@ const App = () => {
               const content = await FileSystem.readAsStringAsync(CONFIG_BACKUP_FILE);
               const configData = JSON.parse(content);
 
-              if (configData.menus && configData.inventory && configData.layaway) {
-                setMenuData(configData.menus);
-                setInventory(configData.inventory);
-                setLayawayItems(configData.layaway);
-                await saveMenus(configData.menus);
-                await saveInventory(configData.inventory);
-                await saveLayaway(configData.layaway);
-                Alert.alert("Import Successful", "Configuration data imported successfully.");
-              } else {
-                Alert.alert("Import Failed", "Invalid configuration file format. Please ensure the JSON contains 'menus', 'inventory', and 'layaway' keys.");
-              }
+              if (configData.menus) { setMenuData(configData.menus); await saveMenus(configData.menus); }
+              if (configData.inventory) { setInventory(configData.inventory); await saveInventory(configData.inventory); }
+              if (configData.layaway) { setLayawayItems(configData.layaway); await saveLayaway(configData.layaway); }
+              if (configData.cashiers) { setCashiers(configData.cashiers); await saveCashiers(configData.cashiers); }
+              if (configData.timeclock) { setTimeClockPunches(configData.timeclock); await saveTimeClockPunches(configData.timeclock); }
+
+              Alert.alert("Import Successful", "Configuration data imported successfully.");
+
             } catch (e) {
               console.error("Failed to import config:", e);
-              Alert.alert("Import Failed", "Could not import configuration data. Please check the file format and ensure it is a valid JSON.");
+              Alert.alert("Import Failed", "Could not import configuration data. Check file format.");
             } finally {
               setIsLoading(false);
               showMainView();
@@ -885,6 +984,34 @@ const App = () => {
         }
       ]
     );
+  };
+
+  const exportPunchesAsCsv = async () => {
+    try {
+      let csvContent = "Date,Time,Cashier Name,Cashier Code,Punch Type,Edited,Original Timestamp,Edit Reason\n";
+
+      const sortedPunches = [...timeClockPunches].sort((a, b) => new Date(a.time) - new Date(b.time));
+
+      sortedPunches.forEach(punch => {
+        const punchDate = new Date(punch.time);
+        const cashier = cashiers.find(c => c.code === punch.cashierCode);
+        const cashierName = cashier ? cashier.name.replace(/,/g, '') : 'Unknown';
+        const isEdited = punch.editReason ? 'Yes' : 'No';
+        const originalTimestamp = isEdited ? new Date(punch.originalTime).toLocaleString() : 'N/A';
+        const editReason = punch.editReason ? `"${punch.editReason.replace(/"/g, '""')}"` : 'N/A';
+
+        csvContent += `${punchDate.toLocaleDateString()},${punchDate.toLocaleTimeString()},${cashierName},${punch.cashierCode},${punch.type},${isEdited},${originalTimestamp},${editReason}\n`;
+      });
+
+      const fileName = `time_punches_${new Date().toISOString().slice(0, 10)}.csv`;
+      const filePath = FileSystem.documentDirectory + fileName;
+      await FileSystem.writeAsStringAsync(filePath, csvContent);
+      await Sharing.shareAsync(filePath);
+      Alert.alert("Export Successful", `Time punch data exported to ${fileName}`);
+    } catch (e) {
+      console.error("Failed to export punches as CSV:", e);
+      Alert.alert("Export Failed", "Could not export time punch data as CSV.");
+    }
   };
 
   const handleAddLayawayPaymentToSale = (layawayItem, paymentAmount) => {
@@ -914,16 +1041,53 @@ const App = () => {
     setAppConfig(newConfig);
     await saveAppConfig(newConfig);
     setShowPSKModal(false);
+    setShowPSKManageModal(false);
     Alert.alert("PSK Set", "The Pre-Shared Key has been saved.");
+  };
+
+  const handlePSKManage = async (mode, oldPsk, newPsk) => {
+    if (mode === 'set' || mode === 'change') {
+      if (appConfig.psk && oldPsk !== appConfig.psk) {
+        Alert.alert("Incorrect PSK", "The old PSK is incorrect.");
+        return;
+      }
+      if (!newPsk || newPsk.length < 4) {
+        Alert.alert("Invalid PSK", "New PSK must be at least 4 characters.");
+        return;
+      }
+      const newConfig = { ...appConfig, psk: newPsk };
+      setAppConfig(newConfig);
+      await saveAppConfig(newConfig);
+      Alert.alert("Success", `PSK has been ${mode === 'set' ? 'set' : 'changed'}.`);
+    } else if (mode === 'remove') {
+      if (appConfig.psk && oldPsk !== appConfig.psk) {
+        Alert.alert("Incorrect PSK", "The current PSK is incorrect.");
+        return;
+      }
+      const newConfig = { ...appConfig, psk: null };
+      setAppConfig(newConfig);
+      await saveAppConfig(newConfig);
+      Alert.alert("Success", "PSK has been removed.");
+    }
+    setShowPSKManageModal(false);
+  };
+
+  const handleNoPSK = async () => {
+    const newConfig = { ...appConfig, firstRun: false };
+    setAppConfig(newConfig);
+    await saveAppConfig(newConfig);
+    setShowPSKModal(false);
   };
 
   const handleToggleEditMode = () => {
     if (isEditModeEnabled) {
-      // If currently enabled, lock it without a PSK
       setIsEditModeEnabled(false);
     } else {
-      // If currently disabled, require PSK to unlock
-      setShowPSKVerifyModal(true);
+      if (appConfig.psk) {
+        setShowPSKVerifyModal(true);
+      } else {
+        setIsEditModeEnabled(true);
+      }
     }
   };
 
@@ -953,12 +1117,21 @@ const App = () => {
       <PSKSetupModal
         isVisible={showPSKModal}
         onSetPSK={handleSetPSK}
+        onNoPSK={handleNoPSK}
         colors={colors}
       />
       <PSKVerificationModal
         isVisible={showPSKVerifyModal}
         onVerifyPSK={handleVerifyPSK}
         onClose={() => setShowPSKVerifyModal(false)}
+        colors={colors}
+      />
+      <PSKManageModal
+        isVisible={showPSKManageModal}
+        mode={pskManageMode}
+        hasPSK={!!appConfig.psk}
+        onSave={handlePSKManage}
+        onClose={() => setShowPSKManageModal(false)}
         colors={colors}
       />
       <View style={[styles.header, { backgroundColor: colors.headerBg }]}>
@@ -1050,6 +1223,11 @@ const App = () => {
           importConfig={importConfig}
           isEditModeEnabled={isEditModeEnabled}
           colors={colors}
+          appConfig={appConfig}
+          setPskManageMode={setPskManageMode}
+          setShowPSKManageModal={setShowPSKManageModal}
+          populateExampleTimeData={populateExampleTimeData}
+          clearAllPunchData={clearAllPunchData}
         />
       ) : currentView === 'menu_management' ? (
         <MenuManagementScreen
@@ -1085,6 +1263,7 @@ const App = () => {
           showPayrollSummaryView={showPayrollSummaryView}
           showCashierManagementView={showCashierManagementView}
           colors={colors}
+          isEditModeEnabled={isEditModeEnabled}
         />
       ) : currentView === 'cashier_management' ? (
         <CashierManagementScreen
@@ -1108,6 +1287,7 @@ const App = () => {
           cashiers={cashiers}
           showTimeClockView={showTimeClockView}
           colors={colors}
+          exportPunchesAsCsv={exportPunchesAsCsv}
         />
       ) : null}
     </SafeAreaView>
@@ -1115,48 +1295,115 @@ const App = () => {
 };
 
 // --- PSK Setup Modal Component ---
-const PSKSetupModal = ({ isVisible, onSetPSK, colors }) => {
+const PSKSetupModal = ({ isVisible, onSetPSK, onNoPSK, colors }) => {
   const [pskInput, setPskInput] = useState('');
+  const [wantsToSetPSK, setWantsToSetPSK] = useState(null);
 
-  const handleSubmit = () => {
+  const handleSetPSK = () => {
     if (pskInput.trim().length < 4) {
       Alert.alert("Invalid PSK", "Pre-Shared Key must be at least 4 characters long.");
       return;
     }
     onSetPSK(pskInput.trim());
     setPskInput('');
+    setWantsToSetPSK(null);
   };
+
+  const handleSkipPSK = () => {
+    onNoPSK();
+    setWantsToSetPSK(null);
+  };
+
+  const renderInitialQuestion = () => (
+    <>
+      <Text style={[styles.modalTitle, { color: colors.text }]}>First Time Setup</Text>
+      <Text style={[styles.modalSubtitle, { color: colors.text }]}>
+        Would you like to set a password (PSK)? This password protects administrative features like editing menus and time punches.
+      </Text>
+      <Text style={[styles.modalSubtitle, { fontSize: 14, color: colors.logDetails, fontStyle: 'italic' }]}>
+        You can set, change, or remove this password later in the Dev menu.
+      </Text>
+      <View style={styles.modalActionButtons}>
+        <TouchableOpacity
+          style={[styles.modalActionButton, { backgroundColor: colors.buttonBgDanger }]}
+          onPress={() => setWantsToSetPSK(false)}
+        >
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>No, Skip</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.modalActionButton, { backgroundColor: colors.buttonBgPrimary }]}
+          onPress={() => setWantsToSetPSK(true)}
+        >
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>Yes, Set PSK</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+
+  const renderSetPSK = () => (
+    <>
+      <Text style={[styles.modalTitle, { color: colors.text }]}>Set Your PSK</Text>
+      <TextInput
+        style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+        placeholder="Enter PSK (min 4 characters)"
+        placeholderTextColor={colors.logDetails}
+        value={pskInput}
+        onChangeText={setPskInput}
+        secureTextEntry
+      />
+      <TouchableOpacity
+        style={[styles.modalButton, { backgroundColor: colors.buttonBgPrimary, width: '100%' }]}
+        onPress={handleSetPSK}
+      >
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>Save PSK and Start</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.modalActionButton, { backgroundColor: colors.buttonBgSecondary, marginTop: 10 }]}
+        onPress={() => setWantsToSetPSK(null)}
+      >
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>Back</Text>
+      </TouchableOpacity>
+    </>
+  );
+
+  const renderSkipWarning = () => (
+    <>
+      <Text style={[styles.modalTitle, { color: colors.text }]}>Are you sure?</Text>
+      <Text style={[styles.modalSubtitle, { color: colors.text }]}>
+        Without a PSK, anyone can access the Dev menu to modify time punches. The lock icon will still prevent accidental edits to inventory and menus.
+      </Text>
+      <View style={styles.modalActionButtons}>
+        <TouchableOpacity
+          style={[styles.modalActionButton, { backgroundColor: colors.buttonBgSecondary }]}
+          onPress={() => setWantsToSetPSK(null)}
+        >
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>Go Back</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.modalActionButton, { backgroundColor: colors.buttonBgPrimary }]}
+          onPress={handleSkipPSK}
+        >
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>Continue Without PSK</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
 
   return (
     <Modal
       animationType="slide"
       transparent={true}
       visible={isVisible}
-      onRequestClose={() => Alert.alert("Setup Required", "You must set a Pre-Shared Key to continue.")}
+      onRequestClose={() => {}}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.centeredView}
       >
         <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
-          <Text style={[styles.modalTitle, { color: colors.text }]}>First Time Setup</Text>
-          <Text style={[styles.modalSubtitle, { color: colors.text }]}>
-            Please set a Pre-Shared Key (PSK). This will be used for administrative features.
-          </Text>
-          <TextInput
-            style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-            placeholder="Enter PSK (min 4 characters)"
-            placeholderTextColor={colors.logDetails}
-            value={pskInput}
-            onChangeText={setPskInput}
-            secureTextEntry
-          />
-          <TouchableOpacity
-            style={[styles.modalButton, { backgroundColor: colors.buttonBgPrimary, width: '100%' }]}
-            onPress={handleSubmit}
-          >
-            <Text style={[styles.buttonText, { color: colors.headerText }]}>Save PSK and Start</Text>
-          </TouchableOpacity>
+          {wantsToSetPSK === null && renderInitialQuestion()}
+          {wantsToSetPSK === true && renderSetPSK()}
+          {wantsToSetPSK === false && renderSkipWarning()}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -1208,6 +1455,109 @@ const PSKVerificationModal = ({ isVisible, onVerifyPSK, onClose, colors }) => {
               onPress={handleSubmit}
             >
               <Text style={[styles.buttonText, { color: colors.headerText }]}>Unlock</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+};
+
+// --- PSK Management Modal Component ---
+const PSKManageModal = ({ isVisible, mode, hasPSK, onSave, onClose, colors }) => {
+  const [oldPsk, setOldPsk] = useState('');
+  const [newPsk, setNewPsk] = useState('');
+  const [confirmNewPsk, setConfirmNewPsk] = useState('');
+
+  useEffect(() => {
+    if (isVisible) {
+      setOldPsk('');
+      setNewPsk('');
+      setConfirmNewPsk('');
+    }
+  }, [isVisible]);
+
+  const getTitle = () => {
+    if (mode === 'set') return 'Set New PSK';
+    if (mode === 'change') return 'Change PSK';
+    if (mode === 'remove') return 'Remove PSK';
+    return 'Manage PSK';
+  };
+
+  const handleSave = () => {
+    if (mode === 'change' && newPsk !== confirmNewPsk) {
+      Alert.alert("Error", "New PSKs do not match.");
+      return;
+    }
+    onSave(mode, oldPsk, newPsk);
+  };
+
+  return (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={isVisible}
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.centeredView}
+      >
+        <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>{getTitle()}</Text>
+
+          {hasPSK && (mode === 'change' || mode === 'remove') && (
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+              placeholder="Enter Current PSK"
+              placeholderTextColor={colors.logDetails}
+              value={oldPsk}
+              onChangeText={setOldPsk}
+              secureTextEntry
+            />
+          )}
+
+          {(mode === 'set' || mode === 'change') && (
+            <>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                placeholder="Enter New PSK (min 4 chars)"
+                placeholderTextColor={colors.logDetails}
+                value={newPsk}
+                onChangeText={setNewPsk}
+                secureTextEntry
+              />
+              {mode === 'change' && (
+                <TextInput
+                  style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                  placeholder="Confirm New PSK"
+                  placeholderTextColor={colors.logDetails}
+                  value={confirmNewPsk}
+                  onChangeText={setConfirmNewPsk}
+                  secureTextEntry
+                />
+              )}
+            </>
+          )}
+
+          {mode === 'remove' && (
+            <Text style={[styles.modalSubtitle, { color: colors.text }]}>
+              Enter your current PSK to confirm removal. This will disable password protection for administrative features.
+            </Text>
+          )}
+
+          <View style={styles.modalActionButtons}>
+            <TouchableOpacity
+              style={[styles.modalActionButton, { backgroundColor: colors.buttonBgDanger }]}
+              onPress={onClose}
+            >
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalActionButton, { backgroundColor: colors.buttonBgPrimary }]}
+              onPress={handleSave}
+            >
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Confirm</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -2365,18 +2715,37 @@ const LogScreen = ({ log, showMainView, showFileManagementView, colors, lastComp
 };
 
 // --- Time Clock Screen Component ---
-const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig, showMainView, showPayrollSummaryView, showCashierManagementView, colors }) => {
+const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig, showMainView, showPayrollSummaryView, showCashierManagementView, colors, isEditModeEnabled }) => {
   const [activeCashier, setActiveCashier] = useState(null);
   const [showCashierSelection, setShowCashierSelection] = useState(true);
   const [editingPunch, setEditingPunch] = useState(null);
   const [editedPunchDate, setEditedPunchDate] = useState(new Date());
   const [isClockedIn, setIsClockedIn] = useState(false);
+  const [showEditReasonModal, setShowEditReasonModal] = useState(false);
+  const [editReason, setEditReason] = useState('');
+
+  const getValidEditDateRange = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const day = now.getDate();
+
+    let validStart, validEnd;
+
+    if (day < 15) { // Current period is 1st-14th
+      validEnd = new Date(year, month, 15); // End of current period
+      validStart = new Date(year, month - 1, 15); // Start of previous period
+    } else { // Current period is 15th-end
+      validEnd = new Date(year, month + 1, 1); // End of current period
+      validStart = new Date(year, month, 1); // Start of previous period
+    }
+    return { start: validStart, end: validEnd };
+  };
 
   const handleSelectCashier = (cashier) => {
     setActiveCashier(cashier);
     setShowCashierSelection(false);
 
-    // Determine if the selected cashier is currently clocked in
     const cashierPunches = punches
       .filter(p => p.cashierCode === cashier.code)
       .sort((a, b) => new Date(b.time) - new Date(a.time));
@@ -2395,7 +2764,7 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
     }
 
     const newPunch = {
-      id: `${new Date().toISOString()}-${Math.random()}`, // Unique ID for each punch
+      id: `${new Date().toISOString()}-${Math.random()}`,
       cashierCode: activeCashier.code,
       time: new Date().toISOString(),
       type,
@@ -2407,7 +2776,7 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
     const newPunches = [...punches, newPunch];
     setPunches(newPunches);
     savePunches(newPunches);
-    setIsClockedIn(type === 'IN'); // Update the clocked-in status
+    setIsClockedIn(type === 'IN');
     Alert.alert("Success", `${activeCashier.name} punched ${type.toLowerCase()} at ${new Date().toLocaleTimeString()}`);
   };
 
@@ -2416,33 +2785,64 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
     setEditedPunchDate(new Date(punch.time));
   };
 
+  const handleDeletePunch = (punchId) => {
+    Alert.alert(
+      "Delete Punch",
+      "Are you sure you want to permanently delete this time punch? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            const updatedPunches = punches.filter(p => p.id !== punchId);
+            setPunches(updatedPunches);
+            savePunches(updatedPunches);
+          },
+        },
+      ]
+    );
+  };
+
   const handleSaveEdit = () => {
     if (!editingPunch || !editedPunchDate) return;
 
-    const updatedTime = editedPunchDate.toISOString();
+    const { start, end } = getValidEditDateRange();
+    if (editedPunchDate < start || editedPunchDate > end) {
+      Alert.alert(
+        "Invalid Date",
+        `The edited time must be within the current or previous pay period.\n\nValid range: ${start.toLocaleDateString()} - ${end.toLocaleDateString()}`
+      );
+      return;
+    }
+    setShowEditReasonModal(true);
+  };
 
-    Alert.prompt(
-      "Reason for Edit",
-      "Please provide a brief reason for this change.",
-      (reason) => {
-        if (reason) {
-          const updatedPunches = punches.map(p => {
-            if (p.id === editingPunch.id) {
-              return {
-                ...p,
-                time: updatedTime,
-                editedBy: activeCashier.code,
-                editReason: reason,
-              };
-            }
-            return p;
-          });
-          setPunches(updatedPunches);
-          savePunches(updatedPunches);
-          setEditingPunch(null);
-        }
+  const handleConfirmSaveEdit = () => {
+    if (!editReason.trim()) {
+      Alert.alert("Reason Required", "Please provide a reason for the edit.");
+      return;
+    }
+
+    const updatedTime = editedPunchDate.toISOString();
+    const updatedPunches = punches.map(p => {
+      if (p.id === editingPunch.id) {
+        return {
+          ...p,
+          time: updatedTime,
+          originalTime: p.originalTime || p.time,
+          editedBy: activeCashier.code,
+          editReason: editReason,
+        };
       }
-    );
+      return p;
+    });
+    setPunches(updatedPunches);
+    savePunches(updatedPunches);
+
+    setEditingPunch(null);
+    setShowEditReasonModal(false);
+    setEditReason('');
   };
 
   const activeCashierPunches = useMemo(() => {
@@ -2477,12 +2877,20 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
                 ))}
               </ScrollView>
             )}
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, width: '100%', marginTop: 10 }]}
-              onPress={showCashierManagementView}
-            >
-              <Text style={[styles.buttonText, { color: colors.headerText }]}>Manage Cashiers</Text>
-            </TouchableOpacity>
+            <View style={styles.cashierSelectNavButtons}>
+                <TouchableOpacity
+                    style={[styles.footerButton, { backgroundColor: colors.buttonBgTertiary }]}
+                    onPress={showCashierManagementView}
+                >
+                    <Text style={[styles.buttonText, { color: colors.headerText }]}>Edit Cashiers</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.footerButton, { backgroundColor: colors.buttonBgTertiary }]}
+                    onPress={showPayrollSummaryView}
+                >
+                    <Text style={[styles.buttonText, { color: colors.headerText }]}>Payroll</Text>
+                </TouchableOpacity>
+            </View>
             <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary, width: '100%' }]} onPress={showMainView}>
               <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Main App'}</Text>
             </TouchableOpacity>
@@ -2532,13 +2940,21 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
                 </Text>
               )}
             </View>
-            {appConfig.allowPunchEditing && (
-              <TouchableOpacity
-                style={[styles.smallActionButton, { backgroundColor: colors.buttonBgSecondary }]}
-                onPress={() => handleEditPunch(item)}
-              >
-                <Text style={[styles.smallButtonText, { color: colors.headerText }]}>Edit</Text>
-              </TouchableOpacity>
+            {isEditModeEnabled && (
+              <View style={{ flexDirection: 'row' }}>
+                <TouchableOpacity
+                  style={[styles.smallActionButton, { backgroundColor: colors.buttonBgSecondary, marginRight: 10 }]}
+                  onPress={() => handleEditPunch(item)}
+                >
+                  <Text style={[styles.smallButtonText, { color: colors.headerText }]}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.smallActionButton, { backgroundColor: colors.buttonBgDanger }]}
+                  onPress={() => handleDeletePunch(item.id)}
+                >
+                  <Text style={[styles.smallButtonText, { color: colors.headerText }]}>Del</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         )}
@@ -2559,7 +2975,7 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
               colors={colors}
             />
             <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary, width: '100%' }]} onPress={handleSaveEdit}>
-              <Text style={[styles.buttonText, { color: colors.headerText }]}>Save Changes</Text>
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Continue to Save</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgDanger, width: '100%' }]} onPress={() => setEditingPunch(null)}>
               <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel</Text>
@@ -2568,11 +2984,42 @@ const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig
         </KeyboardAvoidingView>
       </Modal>
 
-      <View style={styles.timeClockNavButtons}>
-        <TouchableOpacity style={[styles.footerButton, { backgroundColor: colors.buttonBgTertiary }]} onPress={showPayrollSummaryView}>
-          <Text style={[styles.buttonText, { color: colors.headerText }]}>Payroll</Text>
-        </TouchableOpacity>
-      </View>
+      <Modal
+          visible={showEditReasonModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowEditReasonModal(false)}
+      >
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.centeredView}>
+              <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>Reason for Edit</Text>
+                  <TextInput
+                      style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                      placeholder="e.g., Forgot to punch out"
+                      placeholderTextColor={colors.logDetails}
+                      value={editReason}
+                      onChangeText={setEditReason}
+                  />
+                  <View style={styles.modalActionButtons}>
+                      <TouchableOpacity
+                          style={[styles.modalActionButton, { backgroundColor: colors.buttonBgDanger }]}
+                          onPress={() => {
+                              setShowEditReasonModal(false);
+                              setEditReason('');
+                          }}
+                      >
+                          <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                          style={[styles.modalActionButton, { backgroundColor: colors.buttonBgPrimary }]}
+                          onPress={handleConfirmSaveEdit}
+                      >
+                          <Text style={[styles.buttonText, { color: colors.headerText }]}>Confirm Edit</Text>
+                      </TouchableOpacity>
+                  </View>
+              </View>
+          </KeyboardAvoidingView>
+      </Modal>
 
       <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={() => setShowCashierSelection(true)}>
         <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Change Cashier'}</Text>
@@ -2598,7 +3045,7 @@ const PunchDateTimePicker = ({ initialDate, onDateChange, colors }) => {
 
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const days = Array.from({ length: 31 }, (_, i) => i + 1);
-    const years = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i);
+    const years = Array.from({ length: 21 }, (_, i) => new Date().getFullYear() - 10 + i);
     const hours = Array.from({ length: 12 }, (_, i) => i + 1);
     const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
 
@@ -2664,36 +3111,39 @@ const PunchDateTimePicker = ({ initialDate, onDateChange, colors }) => {
 
 
 // --- Simple Bar Chart Component ---
-const SimpleBarChart = ({ data, maxValue, colors }) => {
+const SimpleBarChart = ({ data, maxValue, colors, chartTitle }) => {
   const maxBarHeight = 150;
 
   return (
-    <View style={styles.chartContainer}>
-      {data.length === 0 ? (
-        <Text style={[styles.chartNoDataText, { color: colors.text }]}>No inventory data to display for categories.</Text>
-      ) : (
-        data.map((point, index) => (
-          <View key={index} style={styles.barWrapper}>
-            <Text style={[styles.barValue, { color: colors.text }]}>{point.value}</Text>
-            <View
-              style={[
-                styles.bar,
-                {
-                  height: (point.value / maxValue) * maxBarHeight,
-                  backgroundColor: colors.buttonBgPrimary,
-                },
-              ]}
-            />
-            <Text style={[styles.barLabel, { color: colors.text }]}>{point.label}</Text>
-          </View>
-        ))
-      )}
+    <View style={{alignItems: 'center'}}>
+      <Text style={[styles.modalTitle, { color: colors.text, fontSize: 18 }]}>{chartTitle}</Text>
+      <View style={styles.chartContainer}>
+        {data.length === 0 ? (
+          <Text style={[styles.chartNoDataText, { color: colors.text }]}>No data to display.</Text>
+        ) : (
+          data.map((point, index) => (
+            <View key={index} style={styles.barWrapper}>
+              <Text style={[styles.barValue, { color: colors.text }]}>{point.value}</Text>
+              <View
+                style={[
+                  styles.bar,
+                  {
+                    height: (point.value / maxValue) * maxBarHeight,
+                    backgroundColor: colors.buttonBgPrimary,
+                  },
+                ]}
+              />
+              <Text style={[styles.barLabel, { color: colors.text }]}>{point.label}</Text>
+            </View>
+          ))
+        )}
+      </View>
     </View>
   );
 };
 
 // --- Simple Bar Chart Modal Component ---
-const SimpleBarChartModal = ({ isVisible, onClose, data, maxValue, colors }) => {
+const SimpleBarChartModal = ({ isVisible, onClose, data, maxValue, colors, title }) => {
   return (
     <Modal
       animationType="fade"
@@ -2703,9 +3153,8 @@ const SimpleBarChartModal = ({ isVisible, onClose, data, maxValue, colors }) => 
     >
       <View style={styles.centeredView}>
         <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
-          <Text style={[styles.modalTitle, { color: colors.text }]}>Inventory Overview (Quantity by Category)</Text>
           <ScrollView horizontal contentContainerStyle={styles.chartScrollViewContent}>
-            <SimpleBarChart data={data} maxValue={maxValue} colors={colors} />
+            <SimpleBarChart data={data} maxValue={maxValue} colors={colors} chartTitle={title} />
           </ScrollView>
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.buttonBgSecondary, marginTop: 20 }]}
@@ -2950,6 +3399,7 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
         data={inventoryGraphData}
         maxValue={maxInventoryValue}
         colors={colors}
+        title="Inventory by Category"
       />
     </View>
   );
@@ -3520,7 +3970,12 @@ const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, set
 };
 
 // --- Development Screen Component ---
-const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashierNumber, colorScheme, setColorScheme, saveColorScheme, showMenuManagementView, showCashierManagementView, populateExampleItems, exportConfig, importConfig, isEditModeEnabled, colors }) => {
+const DevelopmentScreen = ({
+  resetAppData, showMainView, cashierNumber, setCashierNumber, colorScheme, setColorScheme,
+  saveColorScheme, showMenuManagementView, showCashierManagementView, populateExampleItems,
+  exportConfig, importConfig, isEditModeEnabled, colors, appConfig, setPskManageMode,
+  setShowPSKManageModal, populateExampleTimeData, clearAllPunchData
+}) => {
   const handleSetColorScheme = (scheme) => {
     setColorScheme(scheme);
     saveColorScheme(scheme);
@@ -3541,31 +3996,24 @@ const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashi
       <Text style={[styles.subtitle, { color: colors.text }]}>Color Scheme</Text>
       <View style={styles.buttonGrid}>
         <TouchableOpacity
-          style={[
-            styles.button,
-            { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor },
-            colorScheme === 'light' && { backgroundColor: colors.pickerSelectedBg }
-          ]}
+          style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }, colorScheme === 'light' && { backgroundColor: colors.pickerSelectedBg }]}
           onPress={() => handleSetColorScheme('light')}>
-          <Text style={[styles.buttonText, { color: colors.text }, colorScheme === 'light' && { color: colors.pickerSelectedText }]}>Light Mode</Text>
+          <Text style={[styles.buttonText, { color: colors.text }, colorScheme === 'light' && { color: colors.pickerSelectedText }]}>Light</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[
-            styles.button,
-            { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor },
-            colorScheme === 'dark' && { backgroundColor: colors.pickerSelectedBg }
-          ]}
+          style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }, colorScheme === 'dark' && { backgroundColor: colors.pickerSelectedBg }]}
           onPress={() => handleSetColorScheme('dark')}>
-          <Text style={[styles.buttonText, { color: colors.text }, colorScheme === 'dark' && { color: colors.pickerSelectedText }]}>Dark Mode</Text>
+          <Text style={[styles.buttonText, { color: colors.text }, colorScheme === 'dark' && { color: colors.pickerSelectedText }]}>Dark</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[
-            styles.button,
-            { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor },
-            colorScheme === 'pastel' && { backgroundColor: colors.pickerSelectedBg }
-          ]}
+          style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }, colorScheme === 'pastel' && { backgroundColor: colors.pickerSelectedBg }]}
           onPress={() => handleSetColorScheme('pastel')}>
-          <Text style={[styles.buttonText, { color: colors.text }, colorScheme === 'pastel' && { color: colors.pickerSelectedText }]}>Pastel Mode</Text>
+          <Text style={[styles.buttonText, { color: colors.text }, colorScheme === 'pastel' && { color: colors.pickerSelectedText }]}>Pastel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }, colorScheme === 'christmas' && { backgroundColor: colors.pickerSelectedBg }]}
+          onPress={() => handleSetColorScheme('christmas')}>
+          <Text style={[styles.buttonText, { color: colors.text }, colorScheme === 'christmas' && { color: colors.pickerSelectedText }]}>Christmas</Text>
         </TouchableOpacity>
       </View>
 
@@ -3576,28 +4024,55 @@ const DevelopmentScreen = ({ resetAppData, showMainView, cashierNumber, setCashi
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Go to Cashier Management</Text>
       </TouchableOpacity>
 
+      <Text style={[styles.subtitle, { color: colors.text }]}>PSK Management</Text>
+      {appConfig.psk ? (
+        <>
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={() => { setPskManageMode('change'); setShowPSKManageModal(true); }}>
+            <Text style={[styles.buttonText, { color: colors.headerText }]}>Change PSK</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgDanger }]} onPress={() => { setPskManageMode('remove'); setShowPSKManageModal(true); }}>
+            <Text style={[styles.buttonText, { color: colors.headerText }]}>Remove PSK</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={() => { setPskManageMode('set'); setShowPSKManageModal(true); }}>
+          <Text style={[styles.buttonText, { color: colors.headerText }]}>Set PSK</Text>
+        </TouchableOpacity>
+      )}
+
+      <Text style={[styles.subtitle, { color: colors.text }]}>Data & Configuration</Text>
+      <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary }]} onPress={exportConfig}>
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>Export Config JSON</Text>
+      </TouchableOpacity>
       <TouchableOpacity
-        style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary, marginTop: 10, opacity: isEditModeEnabled ? 1 : 0.5 }]}
+        style={[styles.actionButton, { backgroundColor: colors.buttonBgSecondary, opacity: isEditModeEnabled ? 1 : 0.5 }]}
+        onPress={isEditModeEnabled ? importConfig : null}
+        disabled={!isEditModeEnabled}
+      >
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>Import Config JSON</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary, opacity: isEditModeEnabled ? 1 : 0.5 }]}
         onPress={isEditModeEnabled ? populateExampleItems : null}
         disabled={!isEditModeEnabled}
       >
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Populate Example Items</Text>
       </TouchableOpacity>
 
-      <Text style={[styles.subtitle, { color: colors.text }]}>Config Import/Export</Text>
+      <Text style={[styles.subtitle, { color: colors.text }]}>Time Clock Data</Text>
       <TouchableOpacity
-        style={[styles.actionButton, { backgroundColor: colors.buttonBgTertiary, marginTop: 10, opacity: isEditModeEnabled ? 1 : 0.5 }]}
-        onPress={isEditModeEnabled ? exportConfig : null}
+        style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary, opacity: isEditModeEnabled ? 1 : 0.5 }]}
+        onPress={isEditModeEnabled ? populateExampleTimeData : null}
         disabled={!isEditModeEnabled}
       >
-        <Text style={[styles.buttonText, { color: colors.headerText }]}>Export Config JSON</Text>
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>Populate Example Cashiers/Punches</Text>
       </TouchableOpacity>
       <TouchableOpacity
-        style={[styles.actionButton, { backgroundColor: colors.buttonBgSecondary, marginTop: 10, opacity: isEditModeEnabled ? 1 : 0.5 }]}
-        onPress={isEditModeEnabled ? importConfig : null}
+        style={[styles.actionButton, { backgroundColor: colors.buttonBgDanger, opacity: isEditModeEnabled ? 1 : 0.5 }]}
+        onPress={isEditModeEnabled ? clearAllPunchData : null}
         disabled={!isEditModeEnabled}
       >
-        <Text style={[styles.buttonText, { color: colors.headerText }]}>Import Config JSON</Text>
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>Clear All Punch Data</Text>
       </TouchableOpacity>
 
       <View style={[styles.resetSection, { borderTopColor: colors.logEntryBorder }]}>
@@ -3890,27 +4365,53 @@ const TimeClockDevMenu = ({ appConfig, setAppConfig, saveAppConfig, showTimeCloc
 };
 
 // --- Payroll Summary Screen Component ---
-const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors }) => {
+const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors, exportPunchesAsCsv }) => {
+  const [showGraphModal, setShowGraphModal] = useState(false);
+  const [graphData, setGraphData] = useState([]);
+  const [graphTitle, setGraphTitle] = useState('');
+  const [maxHours, setMaxHours] = useState(1);
+
   const payrollData = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
-    const month = now.getMonth(); // 0-11
+    const month = now.getMonth();
+    const day = now.getDate();
 
-    // Period 1: 1st to 15th of the current month
-    const period1Start = new Date(year, month, 1);
-    const period1End = new Date(year, month, 16); // End is exclusive
+    let period1, period2;
 
-    // Period 2: 16th of last month to end of last month
-    const period2Start = new Date(year, month - 1, 16);
-    const period2End = new Date(year, month, 1); // End is exclusive
+    if (day < 15) { // Current period is 1st-14th
+      period1 = {
+        title: `1st - 14th of ${now.toLocaleString('default', { month: 'long' })}`,
+        start: new Date(year, month, 1),
+        end: new Date(year, month, 15) // Exclusive end
+      };
+      const prevMonthEnd = new Date(year, month, 1);
+      const prevMonthStart = new Date(year, month - 1, 15);
+      period2 = {
+        title: `15th - End of ${prevMonthStart.toLocaleString('default', { month: 'long' })}`,
+        start: prevMonthStart,
+        end: prevMonthEnd
+      };
+    } else { // Current period is 15th-end
+      period1 = {
+        title: `15th - End of ${now.toLocaleString('default', { month: 'long' })}`,
+        start: new Date(year, month, 15),
+        end: new Date(year, month + 1, 1)
+      };
+      period2 = {
+        title: `1st - 14th of ${now.toLocaleString('default', { month: 'long' })}`,
+        start: new Date(year, month, 1),
+        end: new Date(year, month, 15)
+      };
+    }
 
-    const calculateHours = (periodStart, periodEnd) => {
+    const calculateHours = (period) => {
       const totals = {};
       cashiers.forEach(c => { totals[c.code] = { name: c.name, hours: 0 }; });
 
       const relevantPunches = punches.filter(p => {
         const punchTime = new Date(p.time);
-        return punchTime >= periodStart && punchTime < periodEnd;
+        return punchTime >= period.start && punchTime < period.end;
       });
 
       Object.keys(totals).forEach(cashierCode => {
@@ -3926,29 +4427,41 @@ const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors }) 
             const punchOutTime = new Date(punch.time).getTime();
             const hours = (punchOutTime - lastPunchInTime) / (1000 * 60 * 60);
             totals[cashierCode].hours += Math.max(0, hours);
-            lastPunchInTime = null; // Reset after pairing
+            lastPunchInTime = null;
           }
         });
       });
-      return Object.values(totals).filter(t => t.hours > 0);
+      return { ...period, data: Object.values(totals).filter(t => t.hours > 0) };
     };
 
     return {
-      period1: {
-        title: `1st - 15th of ${period1Start.toLocaleString('default', { month: 'long' })}`,
-        data: calculateHours(period1Start, period1End),
-      },
-      period2: {
-        title: `16th - End of ${period2Start.toLocaleString('default', { month: 'long' })}`,
-        data: calculateHours(period2Start, period2End),
-      },
+      current: calculateHours(period1),
+      previous: calculateHours(period2),
     };
   }, [punches, cashiers]);
 
-  const renderPeriod = ({ title, data }) => (
+  const handleShowGraph = (period) => {
+    const dataForChart = period.data.map(item => ({
+      label: item.name,
+      value: parseFloat(item.hours.toFixed(2))
+    }));
+    const maxVal = Math.max(...dataForChart.map(d => d.value), 1);
+
+    setGraphData(dataForChart);
+    setMaxHours(maxVal);
+    setGraphTitle(`Hours Worked: ${period.title}`);
+    setShowGraphModal(true);
+  };
+
+  const renderPeriod = (period) => (
     <View style={{ marginBottom: 20 }}>
-      <Text style={[styles.subtitle, { color: colors.text }]}>{title}</Text>
-      {data.length > 0 ? data.map(item => (
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={[styles.subtitle, { color: colors.text }]}>{period.title}</Text>
+        <TouchableOpacity onPress={() => handleShowGraph(period)}>
+          <MaterialIcons name="bar-chart" size={24} color={colors.text} />
+        </TouchableOpacity>
+      </View>
+      {period.data.length > 0 ? period.data.map(item => (
         <View key={item.name} style={[styles.listItem, { borderBottomColor: colors.logEntryBorder }]}>
           <Text style={[styles.listItemText, { color: colors.text }]}>{item.name}</Text>
           <Text style={[styles.listItemText, { color: colors.text }]}>{item.hours.toFixed(2)} hours</Text>
@@ -3960,11 +4473,26 @@ const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors }) 
   return (
     <ScrollView style={styles.contentContainer}>
       <Text style={[styles.title, { color: colors.text }]}>Payroll Summary</Text>
-      {renderPeriod(payrollData.period1)}
-      {renderPeriod(payrollData.period2)}
+      {renderPeriod(payrollData.current)}
+      {renderPeriod(payrollData.previous)}
+      <TouchableOpacity
+        style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]}
+        onPress={exportPunchesAsCsv}
+      >
+        <Text style={[styles.buttonText, { color: colors.headerText }]}>Export All Punches (CSV)</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={showTimeClockView}>
         <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Time Clock'}</Text>
       </TouchableOpacity>
+
+      <SimpleBarChartModal
+        isVisible={showGraphModal}
+        onClose={() => setShowGraphModal(false)}
+        data={graphData}
+        maxValue={maxHours}
+        colors={colors}
+        title={graphTitle}
+      />
     </ScrollView>
   );
 };
@@ -4582,10 +5110,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  timeClockNavButtons: {
+  cashierSelectNavButtons: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 20,
+    marginTop: 10,
+    width: '100%',
   },
   dateTimePickerContainer: {
     width: '100%',
