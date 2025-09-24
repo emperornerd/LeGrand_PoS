@@ -1252,6 +1252,7 @@ const App = () => {
           showMainView={showMainView}
           colors={colors}
           onAddLayawayPaymentToSale={handleAddLayawayPaymentToSale}
+          isEditModeEnabled={isEditModeEnabled}
         />
       ) : currentView === 'time_clock' ? (
         <TimeClockScreen
@@ -4093,8 +4094,10 @@ const DevelopmentScreen = ({
 };
 
 // --- Layaway Management Screen Component ---
-const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, addToLog, showMainView, colors, onAddLayawayPaymentToSale }) => {
+const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, addToLog, showMainView, colors, onAddLayawayPaymentToSale, isEditModeEnabled }) => {
   const [paymentInputs, setPaymentInputs] = useState({});
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [editingLayawayItem, setEditingLayawayItem] = useState(null);
 
   useEffect(() => {
     const initialInputs = {};
@@ -4141,6 +4144,42 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, a
         }
       ]
     );
+  };
+
+  const handleOpenEditModal = (item) => {
+    setEditingLayawayItem(item);
+    setIsEditModalVisible(true);
+  };
+
+  const handleUpdateBalance = async (itemToUpdate, newBalanceStr) => {
+    const newBalance = parseFloat(newBalanceStr);
+    if (isNaN(newBalance) || newBalance < 0) {
+      Alert.alert("Invalid Balance", "Please enter a valid positive number for the new balance.");
+      return;
+    }
+    if (newBalance > itemToUpdate.originalPrice) {
+      Alert.alert("Invalid Balance", `New balance cannot be greater than the original price of $${itemToUpdate.originalPrice.toFixed(2)}.`);
+      return;
+    }
+
+    const updatedLayawayItems = layawayItems.map(item => {
+      if (item.layawayId === itemToUpdate.layawayId) {
+        const newAmountPaid = item.originalPrice - newBalance;
+        return {
+          ...item,
+          remainingBalance: newBalance,
+          amountPaid: newAmountPaid,
+        };
+      }
+      return item;
+    });
+
+    setLayawayItems(updatedLayawayItems);
+    await saveLayaway(updatedLayawayItems);
+    addToLog("Layaway Balance Adjusted", itemToUpdate.itemCode, itemToUpdate.category, itemToUpdate.brand, itemToUpdate.item, 'N/A', 'N/A', newBalance.toFixed(2), 'Manual Edit');
+    Alert.alert("Success", `Balance for "${itemToUpdate.item}" updated.`);
+    setIsEditModalVisible(false);
+    setEditingLayawayItem(null);
   };
 
   return (
@@ -4191,6 +4230,14 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, a
                   >
                     <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel Layaway</Text>
                   </TouchableOpacity>
+                  {isEditModeEnabled && (
+                     <TouchableOpacity
+                      style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgSecondary }]}
+                      onPress={() => handleOpenEditModal(item)}
+                    >
+                      <Text style={[styles.buttonText, { color: colors.headerText }]}>Edit Balance</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             ))
@@ -4201,6 +4248,16 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, a
         <Text style={[styles.buttonText, { color: colors.headerText }]}>Back to Main App</Text>
       </TouchableOpacity>
       <View style={styles.bottomBuffer} />
+
+      {editingLayawayItem && (
+        <EditLayawayBalanceModal
+          isVisible={isEditModalVisible}
+          onClose={() => setIsEditModalVisible(false)}
+          onSave={handleUpdateBalance}
+          item={editingLayawayItem}
+          colors={colors}
+        />
+      )}
     </View>
   );
 };
@@ -4567,6 +4624,67 @@ const PayrollSummaryScreen = ({ punches, cashiers, showTimeClockView, colors, ex
         colors={colors}
       />
     </ScrollView>
+  );
+};
+
+// --- Edit Layaway Balance Modal Component ---
+const EditLayawayBalanceModal = ({ isVisible, onClose, onSave, item, colors }) => {
+  const [newBalance, setNewBalance] = useState('');
+
+  useEffect(() => {
+    if (item) {
+      setNewBalance(String(item.remainingBalance.toFixed(2)));
+    }
+  }, [item]);
+
+  if (!item) return null;
+
+  return (
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={isVisible}
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.centeredView}
+      >
+        <View style={[styles.modalView, { backgroundColor: colors.cardBg }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Balance</Text>
+          <Text style={[styles.modalSubtitle, { color: colors.text }]}>
+            Item: {item.item}
+          </Text>
+          <Text style={[styles.modalSubtitle, { color: colors.logDetails, fontSize: 14 }]}>
+            Original Price: ${item.originalPrice.toFixed(2)}
+          </Text>
+
+          <TextInput
+            style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+            placeholder="New Remaining Balance"
+            placeholderTextColor={colors.logDetails}
+            keyboardType="numeric"
+            value={newBalance}
+            onChangeText={setNewBalance}
+          />
+
+          <View style={styles.modalActionButtons}>
+            <TouchableOpacity
+              style={[styles.modalActionButton, { backgroundColor: colors.buttonBgDanger }]}
+              onPress={onClose}
+            >
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalActionButton, { backgroundColor: colors.buttonBgPrimary }]}
+              onPress={() => onSave(item, newBalance)}
+            >
+              <Text style={[styles.buttonText, { color: colors.headerText }]}>Save New Balance</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 };
 
