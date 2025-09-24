@@ -2189,6 +2189,59 @@ const MainScreen = ({
     );
   };
 
+
+  const handlePlusOneLastItem = () => {
+    if (currentSaleItems.length === 0) {
+      Alert.alert("Error", "No items in the current sale to add another.");
+      return;
+    }
+
+    const lastItem = currentSaleItems[currentSaleItems.length - 1];
+
+    const processSale = () => {
+      const newSaleItem = {
+        ...lastItem,
+        saleItemId: Date.now() + Math.random(), // new unique ID
+      };
+
+      setCurrentSaleItems(prevItems => [...prevItems, newSaleItem]);
+      setCurrentSaleTotal(prevTotal => prevTotal + lastItem.priceSold);
+
+      if (lastItem.isInventoryTracked) {
+        const itemData = inventory[lastItem.category]?.[lastItem.brand]?.[lastItem.item];
+        if (itemData) {
+          const newQuantity = parseInt(itemData.quantity, 10) - 1;
+          const updatedInventory = updateInventoryState(lastItem.category, lastItem.brand, lastItem.item, {
+            ...itemData,
+            quantity: newQuantity,
+            lastChange: 'Pending Sale (-1)',
+            lastChangeDate: new Date().toLocaleString()
+          }, inventory);
+          setInventory(updatedInventory);
+        }
+      }
+    };
+
+    if (lastItem.isInventoryTracked) {
+      const itemData = inventory[lastItem.category]?.[lastItem.brand]?.[lastItem.item];
+      if (itemData && itemData.quantity <= 0) {
+        Alert.alert(
+          "Warning: Out of Stock",
+          `${lastItem.item} is out of stock. Do you still want to sell it?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Sell Anyway", onPress: processSale },
+          ]
+        );
+      } else {
+        processSale();
+      }
+    } else {
+      // Not tracked, just add it
+      processSale();
+    }
+  };
+// ... rest of the MainScreen component
   const handleEndSale = async () => {
     if (currentSaleItems.length === 0) {
         Alert.alert("Empty Sale", "There are no items to complete in the current sale.");
@@ -2621,13 +2674,20 @@ const MainScreen = ({
             >
               <Text style={[styles.buttonText, { color: colors.headerText }]}>View Sale Items</Text>
             </TouchableOpacity>
-            <View style={styles.editCancelButtons}>
+              <View style={styles.editCancelButtons}>
               <TouchableOpacity
                 style={[styles.undoLastItemButton, { backgroundColor: colors.buttonBgSecondary, opacity: currentSaleItems.length === 0 ? 0.5 : 1 }]}
                 onPress={handleUndoLastSaleItem}
                 disabled={currentSaleItems.length === 0}
               >
-                <Text style={[styles.buttonText, { color: colors.headerText }]}>Undo Last Item</Text>
+                <Text style={[styles.buttonText, { color: colors.headerText }]}>Undo Last</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.plusOneButton, { backgroundColor: colors.buttonBgTertiary, opacity: currentSaleItems.length === 0 ? 0.5 : 1 }]}
+                onPress={handlePlusOneLastItem}
+                disabled={currentSaleItems.length === 0}
+              >
+                <Text style={[styles.buttonText, { color: colors.headerText }]}>+1 Last</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.cancelSaleButton, { backgroundColor: colors.buttonBgDanger }]} onPress={handleCancelSale}>
                 <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel Sale</Text>
@@ -4928,19 +4988,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  undoLastItemButton: {
+    undoLastItemButton: {
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
     flex: 1,
-    marginRight: 5,
+    marginRight: 2.5,
+  },
+  plusOneButton: {
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 2.5,
   },
   cancelSaleButton: {
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
     flex: 1,
-    marginLeft: 5,
+    marginLeft: 2.5,
   },
   logContainer: {
     flex: 1,
