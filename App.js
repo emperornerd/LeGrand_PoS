@@ -3325,7 +3325,7 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <ScrollView style={[styles.inventoryListContainer, { backgroundColor: colors.cardBg }]}>
+        <ScrollView style={[styles.inventoryListContainer, { backgroundColor: colors.cardBg }]} removeClippedSubviews={true}>
           {filteredAndOrganizedInventory.length === 0 && (
             <Text style={[styles.logEntryText, { color: colors.text }]}>No items in inventory yet or matching your search.</Text>
           )}
