@@ -17,6 +17,7 @@ import {
 import *as FileSystem from 'expo-file-system';
 import *as Sharing from 'expo-sharing';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 
 // --- File System Constants ---
 const LOG_DIRECTORY = FileSystem.documentDirectory + 'inventory_logs/';
@@ -944,26 +945,47 @@ const App = () => {
     }
   };
 
-  const importConfig = async () => {
+ const importConfig = async () => {
+    try {
+      // The type option correctly filters for JSON files.
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+      });
+
+      // FIX: Handle the new response structure from DocumentPicker.
+      // It no longer returns `type: 'success'`, but `canceled: false` and an `assets` array.
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        handleFileImport(result.assets[0].uri);
+      }
+    } catch (e) {
+      console.error("Error picking document:", e);
+      Alert.alert("Error", "Could not open document picker.");
+    }
+  };
+  const handleFileImport = (fileUri) => {
     Alert.alert(
-      "Import Configuration",
-      "This will OVERWRITE your current menus, inventory, layaway, cashiers, and time punches. To import, place 'inventory_config_backup.json' in the app's documents folder.",
+      "Confirm Import",
+      `This will OVERWRITE your current configuration with the content of the selected file. This action cannot be undone. Are you sure you want to proceed?`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Import",
+          style: "destructive",
           onPress: async () => {
             setIsLoading(true);
             try {
-              const fileInfo = await FileSystem.getInfoAsync(CONFIG_BACKUP_FILE);
-              if (!fileInfo.exists) {
-                Alert.alert("File Not Found", "Config backup file not found.");
-                setIsLoading(false);
-                return;
-              }
-
-              const content = await FileSystem.readAsStringAsync(CONFIG_BACKUP_FILE);
+              const content = await FileSystem.readAsStringAsync(fileUri);
               const configData = JSON.parse(content);
+
+              // Validate the structure of configData before proceeding
+              const requiredKeys = ['menus', 'inventory', 'layaway', 'cashiers', 'timeclock'];
+              const hasAllKeys = requiredKeys.every(key => key in configData);
+
+              if (!hasAllKeys) {
+                  Alert.alert("Import Failed", "The selected JSON file has an invalid format or is missing required data sections.");
+                  setIsLoading(false);
+                  return;
+              }
 
               if (configData.menus) { setMenuData(configData.menus); await saveMenus(configData.menus); }
               if (configData.inventory) { setInventory(configData.inventory); await saveInventory(configData.inventory); }
@@ -975,7 +997,7 @@ const App = () => {
 
             } catch (e) {
               console.error("Failed to import config:", e);
-              Alert.alert("Import Failed", "Could not import configuration data. Check file format.");
+              Alert.alert("Import Failed", "Could not import configuration data. Please ensure the file is a valid JSON configuration backup.");
             } finally {
               setIsLoading(false);
               showMainView();
@@ -985,7 +1007,6 @@ const App = () => {
       ]
     );
   };
-
   const exportPunchesAsCsv = async () => {
     try {
       let csvContent = "Date,Time,Cashier Name,Cashier Code,Punch Type,Edited,Original Timestamp,Edit Reason\n";
