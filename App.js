@@ -1951,7 +1951,7 @@ const MainScreen = ({
             text: "Sell Anyway",
             onPress: () => {
               Alert.alert(
-                "Confirm Sale",
+                "",
                 `Sell "${item}" for $${currentItemPrice.toFixed(2)}?`,
                 [
                   {
@@ -1986,7 +1986,7 @@ const MainScreen = ({
     }
 
     Alert.alert(
-      "Confirm Sale",
+      "",
       `Sell "${item}" for $${currentItemPrice.toFixed(2)}?`,
       [
         {
@@ -2084,7 +2084,7 @@ const MainScreen = ({
     setSearchTerm('');
   };
 
-  const handleLayawayItem = (category, brand, item, originalPrice, customerName = '', customerPhone = '') => {
+ const handleLayawayItem = (category, brand, item, originalPrice, customerName = '', customerPhone = '') => {
     const itemData = inventory[category]?.[brand]?.[item];
 
     if (!itemData) {
@@ -2102,7 +2102,7 @@ const MainScreen = ({
       brand: brand,
       item: item,
       originalPrice: originalPrice,
-      amountPaid: 0,
+      amountPaid: 0, // Amount paid will be updated when the sale is completed
       remainingBalance: originalPrice,
       layawayDate: new Date().toLocaleString(),
       isInventoryTracked: category !== 'Clips, etc.' && category !== 'Other',
@@ -2130,6 +2130,10 @@ const MainScreen = ({
       isLayawayPayment: false,
       isLayawayFinalSale: false,
       layawayId: layawayEntry.layawayId,
+      // --- Add these three lines to store data for duplication ---
+      layawayOriginalPrice: originalPrice,
+      layawayCustomerName: customerName,
+      layawayCustomerPhone: customerPhone,
     };
     setCurrentSaleItems(prevItems => [...prevItems, saleItem]);
     setCurrentSaleTotal(prevTotal => prevTotal + downPayment);
@@ -2190,7 +2194,7 @@ const MainScreen = ({
   };
 
 
-  const handlePlusOneLastItem = () => {
+const handlePlusOneLastItem = () => {
     if (currentSaleItems.length === 0) {
       Alert.alert("Error", "No items in the current sale to add another.");
       return;
@@ -2198,6 +2202,53 @@ const MainScreen = ({
 
     const lastItem = currentSaleItems[currentSaleItems.length - 1];
 
+    // Handle the special case for duplicating a layaway item
+    if (lastItem.isLayawayDownPayment) {
+      // Check if we have the necessary data stored from the first change
+      if (lastItem.layawayOriginalPrice === undefined) {
+        Alert.alert("Error", "Cannot duplicate this layaway item. Please add it again manually.");
+        return;
+      }
+      
+      // 1. Create a new, separate layaway entry
+      const newLayawayEntry = {
+        layawayId: Date.now() + Math.random(),
+        itemCode: lastItem.itemCode,
+        category: lastItem.category,
+        brand: lastItem.brand,
+        item: lastItem.item,
+        originalPrice: lastItem.layawayOriginalPrice,
+        amountPaid: 0,
+        remainingBalance: lastItem.layawayOriginalPrice,
+        layawayDate: new Date().toLocaleString(),
+        isInventoryTracked: lastItem.category !== 'Clips, etc.' && lastItem.category !== 'Other',
+        customerName: lastItem.layawayCustomerName,
+        customerPhone: lastItem.layawayCustomerPhone,
+      };
+
+      // 2. Save the new layaway entry immediately
+      setLayawayItems(prevItems => {
+          const updatedLayawayItems = [...prevItems, newLayawayEntry];
+          saveLayaway(updatedLayawayItems);
+          return updatedLayawayItems;
+      });
+
+      // 3. Create a new sale item for the down payment, linked to the new layaway
+      const newSaleItem = {
+          ...lastItem,
+          saleItemId: Date.now() + Math.random(),
+          layawayId: newLayawayEntry.layawayId, // Link to the NEW layaway
+      };
+      
+      // 4. Add the new down payment to the current sale
+      setCurrentSaleItems(prevItems => [...prevItems, newSaleItem]);
+      setCurrentSaleTotal(prevTotal => prevTotal + newSaleItem.priceSold);
+      
+      Alert.alert("Success", `Added another layaway for "${lastItem.item}" to the sale.`);
+      return; // Stop here for the layaway case
+    }
+
+    // Original logic for all non-layaway items
     const processSale = () => {
       const newSaleItem = {
         ...lastItem,
@@ -2237,7 +2288,6 @@ const MainScreen = ({
         processSale();
       }
     } else {
-      // Not tracked, just add it
       processSale();
     }
   };
@@ -2742,7 +2792,6 @@ const MainScreen = ({
     </View>
   );
 };
-
 // --- Log Screen Component ---
 const LogScreen = ({ log, showMainView, showFileManagementView, colors, lastCompletedSaleTotal }) => {
   return (
@@ -2757,25 +2806,29 @@ const LogScreen = ({ log, showMainView, showFileManagementView, colors, lastComp
       )}
       <ScrollView style={[styles.logContainer, { backgroundColor: colors.cardBg, marginTop: lastCompletedSaleTotal > 0 ? 10 : 0 }]}>
         {log.length > 0 ? (
-          [...log].reverse().map((entry, index) => (
-            <View key={index} style={[styles.logEntry, { borderBottomColor: colors.logEntryBorder }]}>
-              <Text style={[styles.logEntryText, { color: colors.logEntryText }]}>
-                <Text style={[styles.logEntryTimestamp, { color: colors.logTimestamp }]}>{entry.timestamp}</Text>
-                <Text style={[styles.logEntryAction, { color: colors.logAction }]}> - {entry.action}</Text>
-              </Text>
-              <Text style={[styles.logEntryDetails, { color: colors.logDetails }]}>
-                Item: {entry.category} - {entry.brand} - {entry.item} (Code: {entry.itemCode})
-              </Text>
-              <Text style={[styles.logEntryDetails, { color: colors.logDetails }]}>
-                Change: {entry.quantityChange}, New Qty: {entry.newQuantity}
-              </Text>
-              {entry.priceSold !== 'N/A' && (
-                <Text style={[styles.logEntryDetails, { color: colors.logDetails }]}>
-                  Price Sold: ${parseFloat(entry.priceSold).toFixed(2)} {entry.discountApplied !== 'No' ? `(Discount: ${entry.discountApplied})` : ''}
+          [...log].reverse().map((entry, index) => {
+            // CORRECTED: Check if the itemCode starts with 'loc-' to identify items from the local category.
+            const isLocal = entry.itemCode && entry.itemCode.toLowerCase().startsWith('loc-');
+            return (
+              <View key={index} style={[styles.logEntry, { borderBottomColor: colors.logEntryBorder }]}>
+                <Text style={[styles.logEntryText, { color: colors.logEntryText }]}>
+                  <Text style={[styles.logEntryTimestamp, { color: colors.logTimestamp }]}>{entry.timestamp}</Text>
+                  <Text style={[styles.logEntryAction, { color: colors.logAction }]}> - {entry.action}</Text>
                 </Text>
-              )}
-            </View>
-          ))
+                <Text style={[styles.logEntryDetails, { color: colors.logDetails }, isLocal && { color: '#27ae60', fontWeight: 'bold' }]}>
+                  Item: {entry.category} - {entry.brand} - {entry.item} (Code: {entry.itemCode}) {isLocal ? '(Local)' : ''}
+                </Text>
+                <Text style={[styles.logEntryDetails, { color: colors.logDetails }]}>
+                  Change: {entry.quantityChange}, New Qty: {entry.newQuantity}
+                </Text>
+                {entry.priceSold !== 'N/A' && (
+                  <Text style={[styles.logEntryDetails, { color: colors.logDetails }]}>
+                    Price Sold: ${parseFloat(entry.priceSold).toFixed(2)} {entry.discountApplied !== 'No' ? `(Discount: ${entry.discountApplied})` : ''}
+                  </Text>
+                )}
+              </View>
+            );
+          })
         ) : (
           <Text style={[styles.logEntryText, { color: colors.text }]}>No entries yet for today.</Text>
         )}
@@ -2790,6 +2843,8 @@ const LogScreen = ({ log, showMainView, showFileManagementView, colors, lastComp
     </View>
   );
 };
+
+
 
 // --- Time Clock Screen Component ---
 const TimeClockScreen = ({ punches, setPunches, savePunches, cashiers, appConfig, showMainView, showPayrollSummaryView, showCashierManagementView, colors, isEditModeEnabled }) => {
@@ -4311,14 +4366,12 @@ const LayawayManagementScreen = ({ layawayItems, setLayawayItems, saveLayaway, a
                   >
                     <Text style={[styles.buttonText, { color: colors.headerText }]}>Cancel Layaway</Text>
                   </TouchableOpacity>
-                  {isEditModeEnabled && (
-                     <TouchableOpacity
-                      style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgSecondary }]}
-                      onPress={() => handleOpenEditModal(item)}
-                    >
-                      <Text style={[styles.buttonText, { color: colors.headerText }]}>Edit Balance</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={[styles.layawayActionButton, { backgroundColor: colors.buttonBgSecondary }]}
+                    onPress={() => handleOpenEditModal(item)}
+                  >
+                    <Text style={[styles.buttonText, { color: colors.headerText }]}>Edit Balance</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             ))
