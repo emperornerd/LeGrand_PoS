@@ -2554,35 +2554,28 @@ const handlePlusOneLastItem = () => {
             <ScrollView style={styles.selectionScrollView}>
               <Text style={[styles.title, { color: colors.text }]}>1. Select a Category</Text>
               <View style={styles.buttonGrid}>
-                {filteredCategories.map((categoryObj) => (
-                  <TouchableOpacity
-                    key={categoryObj.name}
-                    style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]}
-                    onPress={() => handleCategorySelect(categoryObj.name)}>
-                    <Text style={[styles.buttonText, { color: colors.text }]}>{categoryObj.name}</Text>
-                    <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Code: {getCategoryCode(categoryObj.name)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+        {filteredCategories
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((categoryObj) => (
+          <TouchableOpacity key={categoryObj.name} style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]} onPress={() => handleCategorySelect(categoryObj.name)}>
+            <Text style={[styles.buttonText, { color: colors.text }]}>{categoryObj.name}</Text>
+            <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Code: {getCategoryCode(categoryObj.name)}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
             </ScrollView>
-          ) : !selectedBrand && selectedCategory !== 'Other' && selectedCategory !== 'Clips, etc.' ? (
+) : !selectedBrand && selectedCategory !== 'Other' && selectedCategory !== 'Clips, etc.' ? (
             <ScrollView style={styles.selectionScrollView}>
               <Text style={[styles.title, { color: colors.text }]}>2. Select a Brand for {selectedCategory}</Text>
               <View style={styles.buttonGrid}>
-                {filteredBrands.map((brandObj) => (
-                  <TouchableOpacity
-                    key={brandObj.name}
-                    style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]}
-                    onPress={() => handleBrandSelect(brandObj.name)}>
-                    <Text style={[styles.buttonText, { color: colors.text }]}>{brandObj.name}</Text>
-                    <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Code: {getBrandCode(selectedCategory, brandObj.name)}</Text>
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity
-                  style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]}
-                  onPress={showMenuManagementView}>
-                  <Text style={[styles.buttonText, { color: colors.text }]}>+ Add/Manage Brands</Text>
-                </TouchableOpacity>
+                {filteredBrands
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((brandObj) => (
+                    <TouchableOpacity key={brandObj.name} style={[styles.button, { backgroundColor: colors.cardBg, shadowColor: colors.shadowColor }]} onPress={() => handleBrandSelect(brandObj.name)}>
+                      <Text style={[styles.buttonText, { color: colors.text }]}>{brandObj.name}</Text>
+                      <Text style={[styles.itemCodeSmall, { color: colors.logDetails }]}>Code: {getBrandCode(selectedCategory, brandObj.name)}</Text>
+                    </TouchableOpacity>
+                  ))}
               </View>
               <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.buttonBgSecondary }]} onPress={() => setSelectedCategory(null)}>
                 <Text style={[styles.backButtonText, { color: colors.headerText }]}>{'< Back to Categories'}</Text>
@@ -3560,11 +3553,33 @@ const FileManagementScreen = ({ showLogView, colors }) => {
     }
   };
 
-  const readAndDisplayFile = async (fileName) => {
+const readAndDisplayFile = async (fileName) => {
     const filePath = LOG_DIRECTORY + fileName;
     try {
       const content = await FileSystem.readAsStringAsync(filePath);
-      setSelectedFileContent(content);
+      const lines = content.split('\n').filter(line => line.trim() !== '');
+      if (lines.length > 0 && lines[0].startsWith('Timestamp,Action')) {
+        lines.shift();
+      }
+      const parsedLog = lines.map(line => {
+        const parts = line.split(',');
+        if (parts.length >= 10) {
+          return {
+            timestamp: parts[0],
+            action: parts[1],
+            itemCode: parts[2],
+            category: parts[3],
+            brand: parts[4],
+            item: parts[5],
+            quantityChange: parts[6],
+            newQuantity: parts[7],
+            priceSold: parts[8],
+            discountApplied: parts[9],
+          };
+        }
+        return { raw: line };
+      });
+      setSelectedFileContent(parsedLog);
     } catch (e) {
       console.error("Failed to read file:", e);
       Alert.alert("Error", `Failed to read ${fileName}.`);
@@ -3678,11 +3693,35 @@ const FileManagementScreen = ({ showLogView, colors }) => {
         )}
       </ScrollView>
 
-      {selectedFileContent && (
+     {selectedFileContent && (
         <View style={[styles.fileContentModal, { backgroundColor: colors.background }]}>
           <Text style={[styles.fileContentTitle, { color: colors.text }]}>File Content:</Text>
           <ScrollView style={[styles.fileContentScroll, { backgroundColor: colors.cardBg }]}>
-            <Text style={[styles.fileContentText, { color: colors.text }]}>{selectedFileContent}</Text>
+            {selectedFileContent.map((entry, index) => {
+              if (entry.raw) {
+                return <Text key={index} style={[styles.logEntryText, { color: colors.text }]}>{entry.raw}</Text>;
+              }
+              const isLocal = entry.itemCode && entry.itemCode.toLowerCase().startsWith('loc-');
+              return (
+                <View key={index} style={[styles.logEntry, { borderBottomColor: colors.logEntryBorder }]}>
+                  <Text style={[styles.logEntryText, { color: colors.text }]}>
+                    <Text style={[styles.logEntryTimestamp, { color: colors.logTimestamp }]}>{entry.timestamp}</Text>
+                    <Text style={[styles.logEntryAction, { color: colors.logAction }]}> - {entry.action}</Text>
+                  </Text>
+                  <Text style={[styles.logEntryDetails, { color: colors.logDetails }, isLocal && { color: '#27ae60', fontWeight: 'bold' }]}>
+                    Item: {entry.category} - {entry.brand} - {entry.item} (Code: {entry.itemCode}) {isLocal ? '(Local)' : ''}
+                  </Text>
+                  <Text style={[styles.logEntryDetails, { color: colors.logDetails }]}>
+                    Change: {entry.quantityChange}, New Qty: {entry.newQuantity}
+                  </Text>
+                  {entry.priceSold !== 'N/A' && (
+                    <Text style={[styles.logEntryDetails, { color: colors.logDetails }]}>
+                      Price Sold: ${parseFloat(entry.priceSold).toFixed(2)} {entry.discountApplied !== 'No' ? `(Discount: ${entry.discountApplied})` : ''}
+                    </Text>
+                  )}
+                </View>
+              );
+            })}
           </ScrollView>
           <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.buttonBgPrimary }]} onPress={() => setSelectedFileContent(null)}>
             <Text style={[styles.buttonText, { color: colors.headerText }]}>Close View</Text>
