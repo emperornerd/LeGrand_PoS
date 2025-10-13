@@ -3531,6 +3531,7 @@ const InventoryManagementScreen = ({ inventory, updateInventoryState, addToLog, 
 };
 
 // --- File Management Screen Component ---
+// --- File Management Screen Component ---
 const FileManagementScreen = ({ showLogView, colors }) => {
   const [logFiles, setLogFiles] = useState([]);
   const [selectedFileContent, setSelectedFileContent] = useState(null);
@@ -3553,7 +3554,7 @@ const FileManagementScreen = ({ showLogView, colors }) => {
     }
   };
 
-const readAndDisplayFile = async (fileName) => {
+  const readAndDisplayFile = async (fileName) => {
     const filePath = LOG_DIRECTORY + fileName;
     try {
       const content = await FileSystem.readAsStringAsync(filePath);
@@ -3562,6 +3563,11 @@ const readAndDisplayFile = async (fileName) => {
         lines.shift();
       }
       const parsedLog = lines.map(line => {
+        // --- MODIFICATION 1: PERMISSIVE CHECK ---
+        // Check the raw line for 'loc-' to determine if it's a local item.
+        // This bypasses the CSV parsing issue caused by commas in the timestamp.
+        const isLocalByLine = line.toLowerCase().includes('loc-');
+        
         const parts = line.split(',');
         if (parts.length >= 10) {
           return {
@@ -3575,9 +3581,11 @@ const readAndDisplayFile = async (fileName) => {
             newQuantity: parts[7],
             priceSold: parts[8],
             discountApplied: parts[9],
+            isLocal: isLocalByLine, // Attach the result to the parsed object
           };
         }
-        return { raw: line };
+        // Also attach the result to raw/unparsed lines
+        return { raw: line, isLocal: isLocalByLine };
       });
       setSelectedFileContent(parsedLog);
     } catch (e) {
@@ -3698,10 +3706,16 @@ const readAndDisplayFile = async (fileName) => {
           <Text style={[styles.fileContentTitle, { color: colors.text }]}>File Content:</Text>
           <ScrollView style={[styles.fileContentScroll, { backgroundColor: colors.cardBg }]}>
             {selectedFileContent.map((entry, index) => {
+              // --- MODIFICATION 2: USE THE PRE-CALCULATED PROPERTY ---
+              // Use the reliable 'isLocal' property we created during parsing.
+              const isLocal = entry.isLocal;
+
+              // Handle raw (unparsed) lines, allowing them to be highlighted
               if (entry.raw) {
-                return <Text key={index} style={[styles.logEntryText, { color: colors.text }]}>{entry.raw}</Text>;
+                return <Text key={index} style={[styles.logEntryText, { color: colors.text }, isLocal && { color: '#27ae60', fontWeight: 'bold' }]}>{entry.raw}</Text>;
               }
-              const isLocal = entry.itemCode && entry.itemCode.toLowerCase().startsWith('loc-');
+              
+              // Handle correctly parsed lines
               return (
                 <View key={index} style={[styles.logEntry, { borderBottomColor: colors.logEntryBorder }]}>
                   <Text style={[styles.logEntryText, { color: colors.text }]}>
@@ -3736,7 +3750,6 @@ const readAndDisplayFile = async (fileName) => {
     </View>
   );
 };
-
 // --- Menu Management Screen Component ---
 const MenuManagementScreen = ({ menuData, setMenuData, saveMenus, inventory, setInventory, saveInventory, addToLog, showMainView, isEditModeEnabled, colors, updateInventoryState }) => {
   const [newCategoryInput, setNewCategoryInput] = useState('');
